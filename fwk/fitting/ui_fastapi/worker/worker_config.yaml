@@ -1,0 +1,15 @@
+worker:
+  name: "worker-01"
+  label: "Local Worker"
+  comment: "Development machine"
+  port: 8890
+  max_concurrent_jobs: 1
+
+manager:
+  url: "http://localhost:8888"
+  api_key: "worker-key-001"
+  heartbeat_interval: 15
+  poll_interval: 3
+
+paths:
+  output_dir: "../data/output"

@@ -1,0 +1,35 @@
+services:
+  listener-manager-api:
+    build:
+      context: ..
+      dockerfile: listener/dockerfile_api
+    ports:
+      - "7999:8000"
+    env_file:
+      - ../.env.prod
+    environment:
+      - REDIS_HOST=redis
+      - SYSTEM_NAME=listener
+      - SERVICE_NAME=listener-manager-api
+      - SERVICE_ID=listener-manager-api-id
+      - DOCKER_URL=http://listener-manager-api:8000/
+      - EXTERNAL_URL=http://192.168.0.44:7999/
+      - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+      - PORTAL_URL=http://portal:8000
+      - PYTHONPATH=/app
+
+    networks:
+      - net_redis
+      - web_app
+      - portal-network
+volumes:
+  redis_data:
+
+networks:
+  net_redis:
+    external: true
+  portal-network:
+    name: portal-network
+    external: true
+  web_app:
+    driver: bridge

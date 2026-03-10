@@ -1,0 +1,134 @@
+listeners:
+  listener_prod_binance_rest:
+    connector: ccxt-rest-candle-binance
+    data_types: candles  # Only fetch candle data for historical analysis
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binance
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    port: 8010
+  listener_prod_binance_usdm_ws:
+    connector: ccxt-ws
+    data_types: ob_trades  # WebSocket for live trading data (orderbook + trades)
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binanceusdm
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    port: 8012
+  listener_binance_rest:
+    connector: ccxt-rest-candle-binance
+    data_types: candles  # Only fetch candle data for historical analysis
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binance
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+      - BNBUSDT
+      - XRPUSDT
+      - ADAUSDT
+      - DOGEUSDT
+      - AVAXUSDT
+      - TONUSDT
+      - LINKUSDT
+    port: 8013
+  listener_binance_rest_core_statics:
+    connector: ccxt-rest
+    data_types: candles
+    activated: true
+    statics_origin: core_http
+    statics_url: http://172.17.0.1:8093
+    exchanges:
+    - name: binanceusdm
+      symbols:
+      - BTCUSDT
+    port: 8030
+  listener_binance_ws_core_statics:
+    connector: ccxt-ws
+    data_types: ob_trades
+    activated: true
+    statics_origin: core_http
+    statics_url: http://172.17.0.1:8093
+    exchanges:
+    - name: binanceusdm
+      symbols:
+      - BTCUSDT
+    port: 8031
+  listener_binance_rest_usdm:
+    connector: ccxt-rest
+    data_types: candles  # candles
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binanceusdm
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    port: 8014
+  listener_binance_usdm_ws:
+    connector: ccxt-ws
+    data_types: ob_trades  # WebSocket for live trading data (orderbook + trades)
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binanceusdm
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    port: 8022
+  listener_binance_ws:
+    connector: ccxt-ws
+    data_types: ob_trades  # Only trade stream (no orderbook)
+    activated: false
+    statics_origin: listener
+    exchanges:
+    - name: binance
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+    port: 8023
+  listener_oanda:
+    connector: oanda-rest
+    data_types: all  # Default: fetch all data types (candles, trades, orderbook)
+    activated: false
+    statics_origin: listener
+    exchanges:
+    - name: oanda
+      symbols:
+      - US2000_USD
+      - NAS100_USD
+      - SPX500_USD
+      - CN50_USD
+      - HK33_HKD
+      - CHINAH_HKD
+      - USB10Y_USD
+      - XAG_USD
+      - XAU_USD
+      - WTICO_USD
+      - GBP_USD
+      - USD_JPY
+      - USD_CHF
+      - EUR_USD
+    port: 8050
+  listener_okx_rest:
+    connector: ccxt-rest
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: okx
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+    port: 8060

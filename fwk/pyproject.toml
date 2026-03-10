@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fwk"
+version = "0.1.0"
+description = "Financial/trading data framework"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas",
+    "numpy",
+    "xgboost",
+    "jupyter",
+    "pyarrow",
+    "msgpack",
+    "tqdm",
+    "psutil",
+    "joblib",
+    "scikit-learn",
+    "torch",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "ruff",
+    "mypy",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=24.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "features*", "strat*", "backtest*", "fitting*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["core", "features", "rawdata_normalisation", "listener", "bundler", "scripts"]

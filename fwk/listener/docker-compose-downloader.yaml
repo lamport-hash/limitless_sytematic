@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  downloader:
+    build:
+      context: ..
+      dockerfile: listener/dockerfile_downloader
+    container_name: candle_downloader
+    ports:
+      - "7899:8000"
+    volumes:
+      - ./config:/app/config:ro
+      - ./docker_data/data/import/downloader/candle_1min:/data/import/downloader/candle_1min:rw
+    environment:
+      - CONFIG_PATH=/app/config
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    networks:
+      - candle_network
+      - web_list
+      - portal-network
+
+volumes:
+  redis_data:
+
+networks:
+  candle_network:
+  web_list:
+    driver: bridge
+  portal-network:
+    name: portal-network
+    external: true

@@ -1,0 +1,25 @@
+listeners:
+  listener_prod_binance_rest:
+    connector: ccxt-rest-candle-binance
+    data_types: candles  # Only fetch candle data for historical analysis
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binance
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    port: 8010
+  listener_prod_binance_usdm_ws:
+    connector: ccxt-ws
+    data_types: ob_trades  # WebSocket for live trading data (orderbook + trades)
+    activated: true
+    statics_origin: listener
+    exchanges:
+    - name: binanceusdm
+      symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    port: 8012

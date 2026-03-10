@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitting Manager</title>
+    <link rel="stylesheet" href="/static/css/manager.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Fitting Manager</h1>
+            <div class="header-stats" id="header-stats"></div>
+            <div class="header-actions">
+                <button id="btn-refresh" class="btn btn-secondary">Refresh</button>
+                <button id="btn-submit-job" class="btn btn-primary">Submit Job</button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <aside class="workers-panel">
+                <h2>Workers</h2>
+                <div id="workers-list"></div>
+            </aside>
+
+            <section class="jobs-panel">
+                <div class="tabs">
+                    <button class="tab active" data-tab="queue">Queue <span id="queue-count" class="badge">0</span></button>
+                    <button class="tab" data-tab="running">Running <span id="running-count" class="badge">0</span></button>
+                    <button class="tab" data-tab="completed">Completed</button>
+                    <button class="tab" data-tab="failed">Failed</button>
+                    <button class="tab" data-tab="all">All</button>
+                </div>
+
+                <div id="jobs-content" class="jobs-content"></div>
+            </section>
+        </main>
+
+        <footer class="status-bar">
+            <span id="status-message">Ready</span>
+            <span id="last-update">Last update: -</span>
+        </footer>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div id="modal-content" class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Modal</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <div id="submit-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Submit New Job</h3>
+                <button class="modal-close" onclick="closeSubmitModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Job Name</label>
+                    <input type="text" id="job-name" placeholder="e.g., training_run_001">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <select id="job-priority">
+                            <option value="normal">Normal</option>
+                            <option value="low">Low</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Dispatch Mode</label>
+                        <select id="dispatch-mode">
+                            <option value="auto">Auto (least loaded)</option>
+                            <option value="manual">Manual</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="manual-worker-select" class="form-group hidden">
+                    <label>Target Worker</label>
+                    <select id="target-worker"></select>
+                </div>
+                <div class="form-group">
+                    <label>Script</label>
+                    <textarea id="job-script" rows="15" placeholder="# Paste your Python script here..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Config (JSON)</label>
+                    <textarea id="job-config" rows="5" placeholder='{"key": "value"}'></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeSubmitModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitJob()">Submit Job</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/manager.js"></script>
+</body>
+</html>

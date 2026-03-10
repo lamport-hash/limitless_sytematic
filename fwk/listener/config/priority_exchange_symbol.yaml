@@ -1,0 +1,15 @@
+BTCUSDT:
+  - exchange: binance
+    listener: listener_binance_rest
+  - exchange: binanceusdm
+    listener: listener_binance_rest_usdm
+  - exchange: okx
+    listener: listener_okx_rest
+
+ETHUSDT:
+  - exchange: binance
+    listener: listener_binance_rest
+  - exchange: binanceusdm
+    listener: listener_binance_rest_usdm
+  - exchange: okx
+    listener: listener_okx_rest

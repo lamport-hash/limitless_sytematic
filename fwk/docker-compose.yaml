@@ -1,0 +1,12 @@
+services:
+  lab:
+    build:
+      context: .
+      dockerfile: lab/Dockerfile
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+      - ${HOME}/.cache:/root/.cache
+    environment:
+      - JUPYTER_ENABLE_LAB=yes

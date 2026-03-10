@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candle Data Screener</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.0/dist/chartjs-chart-financial.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        .controls {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        select, input {
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e2e8f0;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #60a5fa;
+        }
+        select {
+            cursor: pointer;
+        }
+        button {
+            background: #60a5fa;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #3b82f6;
+        }
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+        .data-section {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        thead {
+            background: #334155;
+            position: sticky;
+            top: 0;
+        }
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        th:hover {
+            background: #475569;
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+        }
+        tr:hover {
+            background: #334155;
+            cursor: pointer;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .pagination button {
+            margin-top: 0;
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+        .page-info {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+        .chart-section {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        .chart-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .chart-actions button {
+            margin-top: 0;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .chart-container {
+            position: relative;
+            height: 500px;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status.loading {
+            background: #f59e0b;
+            color: #1e293b;
+        }
+        .status.ready {
+            background: #10b981;
+            color: #1e293b;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        .spinner {
+            border: 3px solid #475569;
+            border-top: 3px solid #60a5fa;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .close-chart {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0;
+        }
+        .close-chart:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Candle Data Screener</h1>
+            <span class="status loading" id="status">Loading...</span>
+        </header>
+
+        <section class="controls">
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label for="exchange">Exchange</label>
+                    <select id="exchange">
+                        <option value="">All Exchanges</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="marketType">Market Type</label>
+                    <select id="marketType">
+                        <option value="">All Types</option>
+                        <option value="spot">Spot</option>
+                        <option value="futures">Futures</option>
+                        <option value="forex">Forex</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="candleType">Candle Type</label>
+                    <select id="candleType">
+                        <option value="">All Types</option>
+                        <option value="ohlcv">OHLCV</option>
+                        <option value="binance_kline">Binance Kline</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="timeframe">Timeframe</label>
+                    <select id="timeframe">
+                        <option value="">All Timeframes</option>
+                        <option value="1min">1 Minute</option>
+                        <option value="1h">1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                        <option value="1d">1 Day</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="search">Search Symbol</label>
+                    <input type="text" id="search" placeholder="e.g., BTCUSDT, AAPL...">
+                </div>
+            </div>
+            <button id="loadBtn" onclick="loadData()">Load Data</button>
+        </section>
+
+        <section class="data-section" id="dataSection" style="display:none;">
+            <h2 style="margin-bottom:15px;">Data Inventory (<span id="totalItems">0</span> items)</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('exchange')">Exchange ↕</th>
+                            <th onclick="sortTable('marketType')">Market Type ↕</th>
+                            <th onclick="sortTable('symbol')">Symbol ↕</th>
+                            <th onclick="sortTable('candleType')">Candle Type ↕</th>
+                            <th onclick="sortTable('timeframe')">Timeframe ↕</th>
+                            <th onclick="sortTable('nbFiles', 'number')">Files ↕</th>
+                            <th onclick="sortTable('firstDate', 'date')">First Date ↕</th>
+                            <th onclick="sortTable('lastDate', 'date')">Last Date ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination">
+                <button onclick="prevPage()" id="prevBtn">← Previous</button>
+                <span class="page-info">
+                    Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                </span>
+                <button onclick="nextPage()" id="nextBtn">Next →</button>
+            </div>
+        </section>
+
+        <div class="loading-spinner" id="loadingSpinner">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+        </div>
+
+        <section class="chart-section" id="chartSection">
+            <div class="chart-header">
+                <div class="chart-title" id="chartTitle">Chart: BTCUSDT</div>
+                <div class="chart-actions">
+                    <button onclick="exportJSON()">Export JSON</button>
+                    <button onclick="exportCSV()">Export CSV</button>
+                </div>
+            </div>
+            <button class="close-chart" onclick="closeChart()">×</button>
+            <div class="chart-container">
+                <canvas id="chart"></canvas>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        let itemsPerPage = 100;
+        let sortColumn = 'exchange';
+        let sortDirection = 'asc';
+        let currentChartData = null;
+        let chartInstance = null;
+
+        async function init() {
+            await loadExchanges();
+            await loadData();
+            updateStatus('ready');
+        }
+
+        async function loadExchanges() {
+            try {
+                const response = await fetch('/screener/data_inventory');
+                const result = await response.json();
+                const exchanges = [...new Set(result.data.map(d => d.exchange))];
+                
+                const exchangeSelect = document.getElementById('exchange');
+                exchanges.forEach(exchange => {
+                    const option = document.createElement('option');
+                    option.value = exchange;
+                    option.textContent = exchange.charAt(0).toUpperCase() + exchange.slice(1);
+                    exchangeSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load exchanges:', error);
+            }
+        }
+
+        async function loadData() {
+            document.getElementById('loadingSpinner').style.display = 'block';
+            document.getElementById('dataSection').style.display = 'none';
+            
+            try {
+                const exchange = document.getElementById('exchange').value;
+                const marketType = document.getElementById('marketType').value;
+                const candleType = document.getElementById('candleType').value;
+                const timeframe = document.getElementById('timeframe').value;
+                const search = document.getElementById('search').value.toUpperCase();
+                
+                let url = '/screener/data_inventory?';
+                const params = [];
+                if (exchange) params.push(`exchange=${exchange}`);
+                if (marketType) params.push(`market_type=${marketType}`);
+                if (candleType) params.push(`candle_type=${candleType}`);
+                if (timeframe) params.push(`timeframe=${timeframe}`);
+                url += params.join('&');
+                
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                allData = result.data;
+                
+                if (search) {
+                    filteredData = allData.filter(d => 
+                        d.symbol.includes(search) ||
+                        d.exchange.includes(search.toLowerCase())
+                    );
+                } else {
+                    filteredData = [...allData];
+                }
+                
+                sortData();
+                currentPage = 1;
+                renderTable();
+                document.getElementById('totalItems').textContent = filteredData.length;
+                document.getElementById('dataSection').style.display = 'block';
+            } catch (error) {
+                console.error('Failed to load data:', error);
+                alert('Failed to load data: ' + error.message);
+            } finally {
+                document.getElementById('loadingSpinner').style.display = 'none';
+            }
+        }
+
+        function sortData() {
+            filteredData.sort((a, b) => {
+                let valA = a[mapColumn(sortColumn)];
+                let valB = b[mapColumn(sortColumn)];
+                
+                if (sortColumn === 'nbFiles') {
+                    valA = parseInt(valA);
+                    valB = parseInt(valB);
+                } else if (sortColumn === 'firstDate' || sortColumn === 'lastDate') {
+                    valA = new Date(valA);
+                    valB = new Date(valB);
+                } else {
+                    valA = valA.toString().toLowerCase();
+                    valB = valB.toString().toLowerCase();
+                }
+                
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function mapColumn(col) {
+            const map = {
+                'exchange': 'exchange',
+                'marketType': 'market_type',
+                'symbol': 'symbol',
+                'candleType': 'candle_type',
+                'timeframe': 'timeframe',
+                'nbFiles': 'nb_files',
+                'firstDate': 'first_date',
+                'lastDate': 'last_date'
+            };
+            return map[col] || col;
+        }
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            sortData();
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = Math.min(start + itemsPerPage, filteredData.length);
+            const pageData = filteredData.slice(start, end);
+            
+            pageData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.onclick = () => viewChart(row);
+                
+                tr.innerHTML = `
+                    <td>${escapeHtml(row.exchange)}</td>
+                    <td>${escapeHtml(row.market_type)}</td>
+                    <td style="font-weight:600;color:#60a5fa;">${escapeHtml(row.symbol)}</td>
+                    <td>${escapeHtml(row.candle_type)}</td>
+                    <td>${escapeHtml(row.timeframe)}</td>
+                    <td>${row.nb_files}</td>
+                    <td>${row.first_date}</td>
+                    <td>${row.last_date}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            document.getElementById('currentPage').textContent = currentPage;
+            document.getElementById('totalPages').textContent = totalPages;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTable();
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTable();
+            }
+        }
+
+        async function viewChart(row) {
+            document.getElementById('loadingSpinner').style.display = 'block';
+            
+            try {
+                const params = new URLSearchParams({
+                    exchange: row.exchange,
+                    market_type: row.market_type,
+                    symbol: row.symbol,
+                    candle_type: row.candle_type,
+                    timeframe: row.timeframe
+                });
+                
+                const response = await fetch(`/screener/data?${params}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const candles = await response.json();
+                
+                currentChartData = {
+                    symbol: row.symbol,
+                    exchange: row.exchange,
+                    candles: candles,
+                    candleType: row.candle_type
+                };
+                
+                renderChart();
+                document.getElementById('chartSection').style.display = 'block';
+                document.getElementById('chartSection').scrollIntoView({ behavior: 'smooth' });
+            } catch (error) {
+                console.error('Failed to load chart data:', error);
+                alert('Failed to load chart data: ' + error.message);
+            } finally {
+                document.getElementById('loadingSpinner').style.display = 'none';
+            }
+        }
+
+        function renderChart() {
+            const canvas = document.getElementById('chart');
+            
+            document.getElementById('chartTitle').textContent = 
+                `Chart: ${currentChartData.symbol} (${currentChartData.exchange})`;
+            
+            const candles = currentChartData.candles;
+            if (candles.length === 0) {
+                if (chartInstance) {
+                    chartInstance.destroy();
+                    chartInstance = null;
+                }
+                return;
+            }
+            
+            // Destroy existing chart if it exists
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+            
+            // Convert candles to Chart.js candlestick format
+            const candlestickData = candles.map(candle => ({
+                x: candle.timestamp,
+                o: candle.open,
+                h: candle.high,
+                l: candle.low,
+                c: candle.close
+            }));
+            
+            const chartConfig = {
+                type: 'candlestick',
+                data: {
+                    datasets: [{
+                        label: `${currentChartData.symbol} OHLCV`,
+                        data: candlestickData
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM dd, HH:mm'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time',
+                                color: '#94a3b8'
+                            },
+                            grid: {
+                                color: '#334155'
+                            },
+                            ticks: {
+                                color: '#94a3b8'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Price',
+                                color: '#94a3b8'
+                            },
+                            grid: {
+                                color: '#334155'
+                            },
+                            ticks: {
+                                color: '#94a3b8'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#94a3b8'
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const candle = context.raw;
+                                    return [
+                                        `Open: ${candle.o.toFixed(4)}`,
+                                        `High: ${candle.h.toFixed(4)}`,
+                                        `Low: ${candle.l.toFixed(4)}`,
+                                        `Close: ${candle.c.toFixed(4)}`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            chartInstance = new Chart(canvas, chartConfig);
+        }
+
+        function closeChart() {
+            document.getElementById('chartSection').style.display = 'none';
+            currentChartData = null;
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
+        }
+
+        function exportJSON() {
+            if (!currentChartData) return;
+            
+            const jsonStr = JSON.stringify(currentChartData.candles, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentChartData.symbol}_candles.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportCSV() {
+            if (!currentChartData) return;
+            
+            const candles = currentChartData.candles;
+            const headers = Object.keys(candles[0]).join(',');
+            const rows = candles.map(c => Object.values(c).map(v => 
+                typeof v === 'number' ? v.toFixed(2) : v
+            ).join(','));
+            
+            const csv = [headers, ...rows].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentChartData.symbol}_candles.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async function decompressGzip(buffer) {
+            const stream = new Response(buffer).body;
+            const decompressedStream = stream.pipeThrough(new DecompressionStream('gzip'));
+            const arrayBuffer = await new Response(decompressedStream).arrayBuffer();
+            return arrayBuffer;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function updateStatus(status) {
+            const el = document.getElementById('status');
+            el.className = `status ${status}`;
+            el.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        document.getElementById('search').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loadData();
+            }
+        });
+
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

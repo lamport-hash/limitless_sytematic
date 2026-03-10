@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Monitoring Panel</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@2.0.2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.0.0"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .panel {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .panel-title {
+            margin-top: 0;
+            color: #ffffff;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-up {
+            background-color: #4CAF50;
+        }
+        .status-down {
+            background-color: #F44336;
+        }
+        .status-warning {
+            background-color: #FFC107;
+        }
+        .endpoint-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .endpoint-card {
+            flex: 1 1 300px;
+            background-color: #2a2a2a;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        .endpoint-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .endpoint-url {
+            color: #cccccc;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+        .endpoint-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9em;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        select, input, button {
+            padding: 8px 12px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: #2a2a2a;
+            color: #ffffff;
+        }
+        button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #3367d6;
+        }
+        .response-container {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #555;
+            padding: 10px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: #F44336;
+        }
+        .success {
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="color: #ffffff;">API Monitoring Panel</h1>
+            <div>
+                <button onclick="window.location.reload()" style="margin-right: 10px; padding: 8px 12px; background-color: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh Dashboard</button>
+                <span id="api-status" class="status-indicator status-up"></span>
+                <span id="api-status-text">API is operational</span>
+            </div>
+        </div>
+        <div class="panel">
+             <h2 class="panel-title">Symbol Monitoring - All Listeners</h2>
+            <table id="monitoring-table" style="width:100%; border-collapse:collapse;">
+                 <thead>
+                     <tr style="background-color:#333;">
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Listener ID</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Connector Type</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Symbol</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Exchange</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Last Update TS</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Nb Candles Stored</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Nb Trades</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Nb OB</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Nb OB Stream</th>
+                         <th style="border:1px solid #555; padding:8px; color:#fff;">Order Book Snapshot</th>
+                     </tr>
+                 </thead>
+                 <tbody id="monitoring-tbody">
+                     {% for item in monitoring_data %}
+                     <tr>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.listener_id }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.connector_type }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.symbol }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.exchange }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.last_update_ts }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ "{:,}".format(item.nb_candles) }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ "{:,}".format(item.nb_trades) }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.nb_ob }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ "{:,}".format(item.nb_ob_stream) }}</td>
+                         <td style="border:1px solid #555; padding:8px; color:#fff;">{{ item.ob_snapshot }}</td>
+                     </tr>
+                     {% endfor %}
+                 </tbody>
+            </table>
+            <p>Last updated: <span id="monitoring-last-updated">{{ "" if monitoring_data else "Loading..." }}</span></p>
+        </div>
+          <div class="panel">
+              <h2 class="panel-title">Listener Ports</h2>
+              <div id="listener-ports">Loading...</div>
+          </div>
+        <div class="panel">
+            <h2 class="panel-title">System Status</h2>
+            <div id="system-status">
+                <p>Last checked: <span id="last-checked">-</span></p>
+                <p>Uptime: <span id="uptime">-</span></p>
+                <p>Average response time: <span id="avg-response-time">-</span>ms</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2 class="panel-title">Redis Database Monitoring</h2>
+            <div id="redis-stats">
+                <div class="endpoint-container">
+                    <div class="endpoint-card">
+                        <div class="endpoint-name">Candles Stored</div>
+                        <div class="endpoint-stats">
+                            <span>Total: <span id="candles-count">-</span></span>
+                        </div>
+                    </div>
+                    <div class="endpoint-card">
+                        <div class="endpoint-name">Trades Stored</div>
+                        <div class="endpoint-stats">
+                            <span>Total: <span id="trades-count">-</span></span>
+                        </div>
+                    </div>
+                    <div class="endpoint-card">
+                        <div class="endpoint-name">Order Books Stored</div>
+                        <div class="endpoint-stats">
+                            <span>Total: <span id="orderbooks-count">-</span></span>
+                        </div>
+                    </div>
+                    <div class="endpoint-card">
+                        <div class="endpoint-name">Redis Memory Usage</div>
+                        <div class="endpoint-stats">
+                            <span>Used: <span id="redis-used-memory">-</span></span><br>
+                            <span>Peak: <span id="redis-peak-memory">-</span></span><br>
+                            <span>System: <span id="redis-system-memory">-</span></span>
+                        </div>
+                    </div>
+                </div>
+                <p>Last updated: <span id="redis-last-updated">-</span></p>
+                 <button onclick="updateRedisStats()">Refresh Stats</button>
+             </div>
+         </div>
+
+        <div class="panel">
+            <h2 class="panel-title">API Endpoints</h2>
+            <div class="endpoint-container">
+                <div class="endpoint-card">
+                    <div class="endpoint-name">Last Order Book</div>
+                    <div class="endpoint-url">GET /last_orderbook</div>
+                    <div class="endpoint-stats">
+                        <span>Status: <span id="orderbook-status" class="status-indicator status-up"></span></span>
+                        <span>Last response: <span id="orderbook-response-time">-</span>ms</span>
+                    </div>
+                     <button onclick="testEndpoint('orderbook')">Test Now</button>
+                      <div class="controls">
+                          <select id="orderbook-listener"></select>
+                          <select id="orderbook-exchange"></select>
+                          <select id="orderbook-symbol"></select>
+                      </div>
+                    <div id="orderbook-response" class="response-container">Response will appear here...</div>
+                </div>
+
+                <div class="endpoint-card">
+                    <div class="endpoint-name">Last N Trades</div>
+                    <div class="endpoint-url">GET /last_n_trades</div>
+                    <div class="endpoint-stats">
+                        <span>Status: <span id="trades-status" class="status-indicator status-up"></span></span>
+                        <span>Last response: <span id="trades-response-time">-</span>ms</span>
+                    </div>
+                     <button onclick="testEndpoint('trades')">Test Now</button>
+                      <div class="controls">
+                          <select id="trades-listener"></select>
+                          <select id="trades-exchange"></select>
+                          <select id="trades-symbol"></select>
+                          <input id="trades-limit" type="number" placeholder="Limit" value="10" min="1" max="1000">
+                      </div>
+                    <div id="trades-response" class="response-container">Response will appear here...</div>
+                </div>
+
+                 <div class="endpoint-card">
+                     <div class="endpoint-name">Last N Candles</div>
+                     <div class="endpoint-url">GET /last_n_candles</div>
+                     <div class="endpoint-stats">
+                         <span>Status: <span id="candles-status" class="status-indicator status-up"></span></span>
+                         <span>Last response: <span id="candles-response-time">-</span>ms</span>
+                     </div>
+                      <button onclick="testEndpoint('candles')">Test Now</button>
+                       <div class="controls">
+                           <select id="candles-listener"></select>
+                           <select id="candles-exchange"></select>
+                           <select id="candles-symbol"></select>
+                           <input id="candles-limit" type="number" placeholder="Limit" value="10" min="1" max="1000">
+                           <select id="candles-timeframe">
+                               <option value="1m">1m</option>
+                               <option value="5m">5m</option>
+                               <option value="15m">15m</option>
+                               <option value="1h">1h</option>
+                               <option value="4h">4h</option>
+                               <option value="1d">1d</option>
+                           </select>
+                       </div>
+                     <div id="candles-response" class="response-container">Response will appear here...</div>
+                 </div>
+
+                 <div class="endpoint-card">
+                     <div class="endpoint-name">Last N Candles Default</div>
+                     <div class="endpoint-url">GET /last_n_candles_default</div>
+                     <div class="endpoint-stats">
+                         <span>Status: <span id="candles-default-status" class="status-indicator status-up"></span></span>
+                         <span>Last response: <span id="candles-default-response-time">-</span>ms</span>
+                     </div>
+                      <button onclick="testEndpoint('candles-default')">Test Now</button>
+                       <div class="controls">
+                           <select id="candles-default-symbol">
+                               <option value="BTCUSDT">BTCUSDT</option>
+                               <option value="ETHUSDT">ETHUSDT</option>
+                           </select>
+                           <input id="candles-default-limit" type="number" placeholder="Limit" value="10" min="1" max="1000">
+                           <select id="candles-default-timeframe">
+                               <option value="1m">1m</option>
+                               <option value="5m">5m</option>
+                               <option value="15m">15m</option>
+                               <option value="1h">1h</option>
+                               <option value="4h">4h</option>
+                               <option value="1d">1d</option>
+                           </select>
+                       </div>
+                     <div id="candles-default-response" class="response-container">Response will appear here...</div>
+                 </div>
+
+                <div class="endpoint-card">
+                    <div class="endpoint-name">All Daily Candles</div>
+                    <div class="endpoint-url">GET /all_daily_candles</div>
+                    <div class="endpoint-stats">
+                        <span>Status: <span id="daily-candles-status" class="status-indicator status-up"></span></span>
+                        <span>Last response: <span id="daily-candles-response-time">-</span>ms</span>
+                    </div>
+                     <button onclick="testEndpoint('daily-candles')">Test Now</button>
+                      <div class="controls">
+                          <select id="daily-candles-listener"></select>
+                          <select id="daily-candles-exchange"></select>
+                          <select id="daily-candles-symbol"></select>
+                          <input id="daily-candles-date" type="date" value="">
+                          <select id="daily-candles-intraday">
+                              <option value="false">Daily</option>
+                              <option value="true">Intraday</option>
+                          </select>
+                      </div>
+                    <div id="daily-candles-response" class="response-container">Response will appear here...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2 class="panel-title">Performance Metrics</h2>
+            <div class="chart-container">
+                <canvas id="responseTimeChart"></canvas>
+            </div>
+        </div>
+
+
+     </div>
+
+    <script>
+        // Initialize charts
+        const ctx = document.getElementById('responseTimeChart').getContext('2d');
+        const responseTimeChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Order Book',
+                        data: [],
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Trades',
+                        data: [],
+                        borderColor: 'rgb(54, 162, 235)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Candles',
+                        data: [],
+                        borderColor: 'rgb(255, 99, 132)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Candles Default',
+                        data: [],
+                        borderColor: 'rgb(255, 205, 86)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Daily Candles',
+                        data: [],
+                        borderColor: 'rgb(153, 102, 255)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Response Time (ms)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Set default date to today for daily candles
+        document.getElementById('daily-candles-date').valueAsDate = new Date();
+
+        // Store performance data
+        const performanceData = {
+            'orderbook': [],
+            'trades': [],
+            'candles': [],
+            'candles-default': [],
+            'daily-candles': []
+        };
+
+        // Function to test an endpoint
+        async function testEndpoint(endpointType) {
+            let endpointMap = {
+                'orderbook': '/last_orderbook',
+                'trades': '/last_n_trades',
+                'candles': '/last_n_candles',
+                'candles-default': '/last_n_candles_default',
+                'daily-candles': '/all_daily_candles'
+            };
+
+            const endpoint = endpointMap[endpointType];
+            const responseElement = document.getElementById(`${endpointType}-response`);
+            const statusElement = document.getElementById(`${endpointType}-status`);
+            const timeElement = document.getElementById(`${endpointType}-response-time`);
+
+            // Get parameters
+            let url = endpoint;
+            let params = new URLSearchParams();
+
+            // Add listener_id for all endpoints except candles-default
+            if (endpointType !== 'candles-default') {
+                const listenerId = document.getElementById(`${endpointType.replace('-', '-')}-listener`).value;
+                params.append('listener_id', listenerId);
+            }
+
+            if (endpointType === 'orderbook') {
+                params.append('exchange_name', document.getElementById('orderbook-exchange').value);
+                params.append('symbol', document.getElementById('orderbook-symbol').value);
+            }
+            else if (endpointType === 'trades') {
+                params.append('exchange_name', document.getElementById('trades-exchange').value);
+                params.append('symbol', document.getElementById('trades-symbol').value);
+                params.append('n', document.getElementById('trades-limit').value);
+            }
+            else if (endpointType === 'candles') {
+                params.append('exchange_name', document.getElementById('candles-exchange').value);
+                params.append('symbol', document.getElementById('candles-symbol').value);
+                params.append('n', document.getElementById('candles-limit').value);
+                params.append('timeframe', document.getElementById('candles-timeframe').value);
+            }
+            else if (endpointType === 'candles-default') {
+                params.append('symbol', document.getElementById('candles-default-symbol').value);
+                params.append('n', document.getElementById('candles-default-limit').value);
+                params.append('timeframe', document.getElementById('candles-default-timeframe').value);
+            }
+            else if (endpointType === 'daily-candles') {
+                params.append('exchange_name', document.getElementById('daily-candles-exchange').value);
+                params.append('symbol', document.getElementById('daily-candles-symbol').value);
+
+                const dateInput = document.getElementById('daily-candles-date');
+                const date = new Date(dateInput.value);
+                params.append('day', date.toISOString());
+            }
+
+            // Add signature (in a real app, this would be properly generated)
+            params.append('signature', 'monitoring-panel');
+
+            // Add timestamp to avoid caching
+            params.append('_', Date.now());
+
+            // When embedded in portal iframe, use absolute URL to manager port
+            if (window.self !== window.top) {
+                // We're in an iframe, construct absolute URL to manager
+                url = `http://192.168.0.36:7999${url}?${params.toString()}`;
+            } else {
+                // Direct access, use relative URL
+                url += `?${params.toString()}`;
+            }
+
+            responseElement.textContent = "Testing endpoint...";
+            responseElement.className = "response-container";
+
+            try {
+                const startTime = performance.now();
+                const response = await fetch(url);
+                const endTime = performance.now();
+                const responseTime = Math.round(endTime - startTime);
+
+                if (!response.ok && response.status !== 404) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                let data;
+                if (response.status === 404) {
+                    data = { message: "No data available" };
+                } else {
+                    data = await response.json();
+                }
+                
+                // Update UI
+                if (response.status === 404) {
+                    statusElement.className = "status-indicator status-warning";
+                    responseElement.className = "response-container";
+                } else {
+                    statusElement.className = "status-indicator status-up";
+                    responseElement.className = "response-container success";
+                }
+                timeElement.textContent = responseTime;
+                responseElement.textContent = JSON.stringify(data, null, 2);
+                
+                // Update performance data
+                const timestamp = new Date();
+                performanceData[endpointType].push({
+                    x: timestamp,
+                    y: responseTime
+                });
+                
+                // Keep only the last 50 data points
+                if (performanceData[endpointType].length > 50) {
+                    performanceData[endpointType].shift();
+                }
+                
+                // Update chart
+                updateChart();
+                
+                // Update system status
+                updateSystemStatus();
+                
+                return true;
+            } catch (error) {
+                console.error(`Error testing ${endpointType}:`, error);
+                statusElement.className = "status-indicator status-down";
+                timeElement.textContent = "-";
+                responseElement.textContent = error.message;
+                responseElement.className = "response-container error";
+                return false;
+            }
+        }
+
+        // Function to update the chart
+        function updateChart() {
+            responseTimeChart.data.datasets[0].data = performanceData['orderbook'];
+            responseTimeChart.data.datasets[1].data = performanceData['trades'];
+            responseTimeChart.data.datasets[2].data = performanceData['candles'];
+            responseTimeChart.data.datasets[3].data = performanceData['candles-default'];
+            responseTimeChart.data.datasets[4].data = performanceData['daily-candles'];
+            responseTimeChart.update();
+        }
+
+        // Function to update system status
+        function updateSystemStatus() {
+            document.getElementById('last-checked').textContent = new Date().toLocaleString();
+            
+            // Calculate average response time
+            let total = 0;
+            let count = 0;
+            
+            for (const endpoint in performanceData) {
+                if (performanceData[endpoint].length > 0) {
+                    const sum = performanceData[endpoint].reduce((acc, point) => acc + point.y, 0);
+                    total += sum;
+                    count += performanceData[endpoint].length;
+                }
+            }
+            
+            const avg = count > 0 ? Math.round(total / count) : 0;
+            document.getElementById('avg-response-time').textContent = avg;
+        }
+
+        // Function to test all endpoints
+        async function testAllEndpoints() {
+            const results = await Promise.all([
+                testEndpoint('orderbook'),
+                testEndpoint('trades'),
+                testEndpoint('candles'),
+                testEndpoint('candles-default'),
+                testEndpoint('daily-candles')
+            ]);
+
+            // Update overall API status
+            const allSuccessful = results.every(result => result);
+            const statusElement = document.getElementById('api-status');
+            const statusText = document.getElementById('api-status-text');
+
+            if (allSuccessful) {
+                statusElement.className = "status-indicator status-up";
+                statusText.textContent = "API is operational";
+            } else {
+                statusElement.className = "status-indicator status-down";
+                statusText.textContent = "API has issues";
+            }
+        }
+
+        // Helper function to construct API URLs
+        function constructApiUrl(endpoint) {
+            if (window.self !== window.top) {
+                // We're in an iframe, construct absolute URL to manager
+                return `http://192.168.0.36:7999${endpoint}`;
+            } else {
+                // Direct access, use relative URL
+                return endpoint;
+            }
+        }
+
+        // Function to update Redis stats
+        async function updateRedisStats() {
+            try {
+                const response = await fetch(constructApiUrl('/redis/stats?signature=monitoring-panel'));
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                document.getElementById('candles-count').textContent = data.candles_count.toLocaleString();
+                document.getElementById('trades-count').textContent = data.trades_count.toLocaleString();
+                document.getElementById('orderbooks-count').textContent = data.orderbooks_count.toLocaleString();
+                document.getElementById('redis-used-memory').textContent = data.memory_usage.used_memory;
+                document.getElementById('redis-peak-memory').textContent = data.memory_usage.used_memory_peak;
+                document.getElementById('redis-system-memory').textContent = data.memory_usage.total_system_memory;
+                document.getElementById('redis-last-updated').textContent = new Date().toLocaleString();
+            } catch (error) {
+                console.error('Error fetching Redis stats:', error);
+                // Show error in the stats
+                document.getElementById('candles-count').textContent = 'Error';
+                document.getElementById('trades-count').textContent = 'Error';
+                document.getElementById('orderbooks-count').textContent = 'Error';
+                document.getElementById('redis-used-memory').textContent = 'Error';
+                document.getElementById('redis-peak-memory').textContent = 'Error';
+                document.getElementById('redis-system-memory').textContent = 'Error';
+            }
+        }
+
+        // Store monitoring data globally
+        let monitoringData = [];
+
+        // Store active listeners globally
+        let activeListeners = {{ active_listeners | tojson }};
+
+        // Function to update monitoring table
+        async function updateMonitoringTable() {
+            try {
+                const response = await fetch(constructApiUrl('/monitoring/data?signature=monitoring-panel'));
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                monitoringData = await response.json();
+                const tbody = document.getElementById('monitoring-tbody');
+                tbody.innerHTML = '';
+                monitoringData.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.listener_id}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.connector_type}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.symbol}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.exchange}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.last_update_ts}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.nb_candles.toLocaleString()}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.nb_trades.toLocaleString()}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.nb_ob}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.nb_ob_stream.toLocaleString()}</td>
+                        <td style="border:1px solid #555; padding:8px; color:#fff;">${item.ob_snapshot}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                document.getElementById('monitoring-last-updated').textContent = new Date().toLocaleString();
+                // Update endpoint selects
+                updateEndpointSelects();
+            } catch (error) {
+                console.error('Error fetching monitoring data:', error);
+                const tbody = document.getElementById('monitoring-tbody');
+                tbody.innerHTML = '<tr><td colspan="10" style="border:1px solid #555; padding:8px; color:#f44336;">Error loading data</td></tr>';
+            }
+        }
+
+        // Function to update endpoint selects with actual data
+        function updateEndpointSelects() {
+            const exchanges = [...new Set(monitoringData.map(item => item.exchange))];
+            const symbols = [...new Set(monitoringData.map(item => item.symbol))];
+
+            // Update all symbol selects
+            const symbolSelects = ['orderbook-symbol', 'trades-symbol', 'candles-symbol', 'daily-candles-symbol'];
+            symbolSelects.forEach(id => {
+                const select = document.getElementById(id);
+                select.innerHTML = '';
+                symbols.forEach(symbol => {
+                    const option = document.createElement('option');
+                    option.value = symbol;
+                    option.textContent = symbol;
+                    select.appendChild(option);
+                });
+            });
+
+            // Update all listener selects
+            const listenerSelects = ['orderbook-listener', 'trades-listener', 'candles-listener', 'daily-candles-listener'];
+            listenerSelects.forEach(id => {
+                const select = document.getElementById(id);
+                select.innerHTML = '';
+                Object.keys(activeListeners).forEach(listener => {
+                    const option = document.createElement('option');
+                    option.value = listener;
+                    option.textContent = listener;
+                    select.appendChild(option);
+                });
+                // Add event listener to update exchanges when listener changes
+                select.addEventListener('change', updateExchangesForListener);
+            });
+
+            // Initial update of exchanges
+            updateExchangesForListener();
+        }
+
+        // Function to update exchange selects based on selected listener
+        function updateExchangesForListener() {
+            const exchangeSelects = ['orderbook-exchange', 'trades-exchange', 'candles-exchange', 'daily-candles-exchange'];
+            exchangeSelects.forEach(id => {
+                const select = document.getElementById(id);
+                const listenerId = id.replace('-exchange', '-listener');
+                const selectedListener = document.getElementById(listenerId).value;
+                const listenerConfig = activeListeners[selectedListener];
+                if (listenerConfig && listenerConfig.exchanges) {
+                    const listenerExchanges = listenerConfig.exchanges.map(e => e.name);
+                    select.innerHTML = '';
+                    listenerExchanges.forEach(exchange => {
+                        const option = document.createElement('option');
+                        option.value = exchange;
+                        option.textContent = exchange;
+                        select.appendChild(option);
+                    });
+                } else {
+                    // Fallback to all exchanges
+                    select.innerHTML = '';
+                    const allExchanges = [...new Set(monitoringData.map(item => item.exchange))];
+                    allExchanges.forEach(exchange => {
+                        const option = document.createElement('option');
+                        option.value = exchange;
+                        option.textContent = exchange;
+                        select.appendChild(option);
+                    });
+                }
+            });
+        }
+
+        // Function to update listener ports
+        async function updateListenerPorts() {
+            try {
+                const response = await fetch(constructApiUrl('/listener_ports'));
+                const data = await response.json();
+                let html = '<table style="width:100%; border-collapse:collapse;"><tr style="background-color:#333;"><th style="border:1px solid #555; padding:8px; color:#fff;">Listener</th><th style="border:1px solid #555; padding:8px; color:#fff;">Port</th><th style="border:1px solid #555; padding:8px; color:#fff;">Last Seen</th><th style="border:1px solid #555; padding:8px; color:#fff;">listener_ui</th></tr>';
+                for (const [id, info] of Object.entries(data)) {
+                     html += `<tr><td style="border:1px solid #555; padding:8px; color:#fff;">${id}</td><td style="border:1px solid #555; padding:8px; color:#fff;">${info.port}</td><td style="border:1px solid #555; padding:8px; color:#fff;">${info.datetime ? new Date(info.datetime).toLocaleString() : 'Never'}</td><td style="border:1px solid #555; padding:8px;"><button onclick="window.open('http://${window.location.hostname}:${info.port}/listener_ui', '_blank')">Open</button></td></tr>`;
+                 }
+                html += '</table>';
+                document.getElementById('listener-ports').innerHTML = html;
+            } catch (error) {
+                document.getElementById('listener-ports').innerHTML = 'Error loading ports';
+            }
+        }
+
+        // Initial load
+        updateMonitoringTable();
+        testAllEndpoints();
+        updateRedisStats();
+        updateListenerPorts();
+
+        // Set up periodic updates
+        setInterval(updateMonitoringTable, 30000);
+        setInterval(testAllEndpoints, 30000);
+        setInterval(updateRedisStats, 60000);
+        setInterval(updateListenerPorts, 60000);
+    </script>
+</body>
+</html>

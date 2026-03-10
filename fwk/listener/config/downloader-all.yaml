@@ -1,0 +1,32 @@
+downloader:
+  base_folder: /data/candles/
+  nb_days_to_download: 800
+  exchanges:
+  - name: binance
+    connector: ccxt-rest
+    market_type: spot
+    symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - SOLUSDT
+    start_date: '2024-01-01'
+  - name: dukascopy
+    connector: dukascopy-rest
+    market_type: spot
+    symbols:
+    - SPYUSUSD
+    - EURUSD
+    - GBPUSD
+    - USDJPY
+    - xauusd
+    - usdcad
+    - usdchf
+    - nzdusd
+    - spyususd
+    - eemususd
+    - fxiususd
+    - 2828hkhkd
+    - 3188hkhkd
+    - 2822hkhkd
+    start_date: '2023-01-01'

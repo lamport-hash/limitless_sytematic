@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candle Downloader Dashboard - {{ service_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.0/dist/chartjs-chart-financial.min.js"></script>
+    <style>
+        .symbol-card {
+            transition: all 0.3s ease;
+        }
+        .symbol-card:hover {
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        .status-downloading {
+            color: #0d6efd;
+            animation: pulse 2s infinite;
+        }
+        .status-completed {
+            color: #198754;
+        }
+        .status-error {
+            color: #dc3545;
+        }
+        .status-pending {
+            color: #6c757d;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .progress-container {
+            height: 4px;
+            background-color: #e9ecef;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #0d6efd;
+            transition: width 0.3s ease;
+        }
+        .last-updated {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .table-responsive {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .config-section {
+            background-color: #2d3748;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="display-6">
+                <i class="bi bi-download"></i> Candle Downloader Dashboard
+                <span class="badge bg-secondary">{{ service_name }}</span>
+            </h1>
+            <div>
+                <span id="connection-status" class="badge bg-danger">
+                    <span class="status-indicator status-inactive"></span> Disconnected
+                </span>
+                <span id="last-updated" class="ms-2 last-updated">Never updated</span>
+            </div>
+        </div>
+
+        <!-- System Status Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">System Status</h5>
+                        <p class="mb-1">Downloader Status</p>
+                        <h3 id="downloader-status">Unknown</h3>
+                        <p class="mb-1">Queue Size</p>
+                        <h3 id="queue-size">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Download Progress</h5>
+                        <p class="mb-1">Current Symbol</p>
+                        <h6 id="current-symbol" class="text-truncate">-</h6>
+                        <p class="mb-1">Current Date</p>
+                        <h6 id="current-date">-</h6>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Configuration</h5>
+                        <p class="mb-1">Base Folder</p>
+                        <h6 id="base-folder" class="text-truncate">-</h6>
+                        <p class="mb-1">Days to Download</p>
+                        <h3 id="nb-days-download">-</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Controls</h5>
+                        <div class="d-grid gap-2">
+                            <button id="start-btn" class="btn btn-success">
+                                <i class="bi bi-play-fill"></i> Start
+                            </button>
+                            <button id="stop-btn" class="btn btn-danger">
+                                <i class="bi bi-stop-fill"></i> Stop
+                            </button>
+                            <button id="refresh-btn" class="btn btn-primary">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Symbol Section -->
+        <div class="config-section">
+            <h5 class="mb-3">Add New Symbol</h5>
+            <form id="add-symbol-form" class="row g-3">
+                <div class="col-md-2">
+                    <label for="connector" class="form-label">Connector</label>
+                    <select id="connector" name="connector" class="form-select" required>
+                        <option value="">Select...</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="exchange" class="form-label">Exchange</label>
+                    <select id="exchange" name="exchange" class="form-select" required>
+                        <option value="">Select connector first...</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="market_type" class="form-label">Market Type</label>
+                    <select id="market_type" name="market_type" class="form-select" required>
+                        <option value="">Select...</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="symbol" class="form-label">Symbol</label>
+                    <input type="text" id="symbol" name="symbol" class="form-control" placeholder="e.g., BTCUSDT" required>
+                </div>
+                <div class="col-md-2">
+                    <label for="nb-days" class="form-label">Days to Download</label>
+                    <input type="number" id="nb-days" name="nb_days" class="form-control" value="365" min="1" max="3650">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus-lg"></i> Add
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Symbols Table -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Tracked Symbols</h5>
+                <div>
+                    <button id="save-config-btn" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-save"></i> Save Config
+                    </button>
+                    <button id="export-config-btn" class="btn btn-outline-info btn-sm">
+                        <i class="bi bi-download"></i> Export
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>Exchange</th>
+                                <th>Symbol</th>
+                                <th>Connector</th>
+                                <th>Market</th>
+                                <th>Days on Drive</th>
+                                <th>First Date</th>
+                                <th>Last Date</th>
+                                <th>Missing Days</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="symbols-table">
+                            <tr>
+                                <td colspan="11" class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading symbol data...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Candle Chart Section -->
+        <div class="card mb-4" id="chart-section" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up"></i> 
+                    Candle Chart - <span id="chart-symbol"></span>
+                </h5>
+                <button type="button" class="btn-close" onclick="hideChart()"></button>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label for="chart-start-date" class="form-label">Start Date</label>
+                        <input type="date" id="chart-start-date" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="chart-end-date" class="form-label">End Date</label>
+                        <input type="date" id="chart-end-date" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="chart-timeframe" class="form-label">Timeframe</label>
+                        <select id="chart-timeframe" class="form-select">
+                            <option value="1m">1 Minute</option>
+                            <option value="5m">5 Minutes</option>
+                            <option value="15m">15 Minutes</option>
+                            <option value="1h">1 Hour</option>
+                            <option value="1d">1 Day</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button id="update-chart-btn" class="btn btn-primary w-100">
+                            <i class="bi bi-arrow-clockwise"></i> Update
+                        </button>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button id="export-chart-btn" class="btn btn-outline-success w-100">
+                            <i class="bi bi-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+                <div class="chart-container" style="position: relative; height: 400px;">
+                    <canvas id="candle-chart"></canvas>
+                </div>
+                <div id="chart-loading" class="text-center py-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading chart data...</span>
+                    </div>
+                    <p class="mt-2">Loading chart data...</p>
+                </div>
+                <div id="chart-error" class="alert alert-danger" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="fixed-bottom m-3" style="max-width: 400px;" id="progress-container" style="display: none;">
+            <div class="card">
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small id="progress-text">Downloading...</small>
+                        <small id="progress-percent">0%</small>
+                    </div>
+                    <div class="progress-container">
+                        <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Candle Chart Modal -->
+    <div class="modal fade" id="chartModal" tabindex="-1" size="xl">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-graph-up"></i> 
+                        Candle Chart - <span id="modal-chart-symbol"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="modal-chart-start-date" class="form-label">Start Date</label>
+                            <input type="date" id="modal-chart-start-date" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="modal-chart-end-date" class="form-label">End Date</label>
+                            <input type="date" id="modal-chart-end-date" class="form-control">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="modal-chart-timeframe" class="form-label">Timeframe</label>
+                            <select id="modal-chart-timeframe" class="form-select">
+                                <option value="1m">1 Minute</option>
+                                <option value="5m">5 Minutes</option>
+                                <option value="15m">15 Minutes</option>
+                                <option value="1h">1 Hour</option>
+                                <option value="1d">1 Day</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button id="modal-update-chart-btn" class="btn btn-primary w-100">
+                                <i class="bi bi-arrow-clockwise"></i> Update
+                            </button>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button id="modal-export-chart-btn" class="btn btn-outline-success w-100">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="position: relative; height: 500px;">
+                        <canvas id="modal-candle-chart"></canvas>
+                    </div>
+                    <div id="modal-chart-loading" class="text-center py-4" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading chart data...</span>
+                        </div>
+                        <p class="mt-2">Loading chart data...</p>
+                    </div>
+                    <div id="modal-chart-error" class="alert alert-danger" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Error</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="error-message"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Success</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="success-message"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let validOptions = {};
+        let currentConfig = {};
+        let refreshInterval;
+        let currentChart = null;
+        let modalChart = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadValidOptions();
+            loadSystemInfo();
+            loadDownloadStatus();
+            startAutoRefresh();
+            
+            // Event listeners
+            document.getElementById('connector').addEventListener('change', updateExchangeOptions);
+            document.getElementById('add-symbol-form').addEventListener('submit', handleAddSymbol);
+            document.getElementById('start-btn').addEventListener('click', startDownloader);
+            document.getElementById('stop-btn').addEventListener('click', stopDownloader);
+            document.getElementById('refresh-btn').addEventListener('click', loadDownloadStatus);
+            document.getElementById('save-config-btn').addEventListener('click', saveConfiguration);
+            document.getElementById('export-config-btn').addEventListener('click', exportConfiguration);
+            
+            // Chart event listeners
+            document.getElementById('update-chart-btn').addEventListener('click', updateInlineChart);
+            document.getElementById('export-chart-btn').addEventListener('click', exportChartData);
+            document.getElementById('modal-update-chart-btn').addEventListener('click', updateModalChart);
+            document.getElementById('modal-export-chart-btn').addEventListener('click', exportModalChartData);
+        });
+
+        // Load valid options for form dropdowns
+        async function loadValidOptions() {
+            try {
+                const response = await fetch('/valid_options');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    validOptions = data.data;
+                    populateFormOptions();
+                }
+            } catch (error) {
+                console.error('Failed to load valid options:', error);
+            }
+        }
+
+        // Populate form dropdowns
+        function populateFormOptions() {
+            // Connector options
+            const connectorSelect = document.getElementById('connector');
+            validOptions.connectors.forEach(connector => {
+                const option = document.createElement('option');
+                option.value = connector;
+                option.textContent = connector.toUpperCase();
+                connectorSelect.appendChild(option);
+            });
+
+            // Market type options
+            const marketSelect = document.getElementById('market_type');
+            validOptions.market_types.forEach(market => {
+                const option = document.createElement('option');
+                option.value = market;
+                option.textContent = market.charAt(0).toUpperCase() + market.slice(1);
+                marketSelect.appendChild(option);
+            });
+        }
+
+        // Update exchange options based on connector selection
+        function updateExchangeOptions() {
+            const connector = document.getElementById('connector').value;
+            const exchangeSelect = document.getElementById('exchange');
+            
+            // Clear existing options
+            exchangeSelect.innerHTML = '<option value="">Select...</option>';
+            
+            if (connector && validOptions.connector_exchanges[connector]) {
+                validOptions.connector_exchanges[connector].forEach(exchange => {
+                    const option = document.createElement('option');
+                    option.value = exchange;
+                    option.textContent = exchange.charAt(0).toUpperCase() + exchange.slice(1);
+                    exchangeSelect.appendChild(option);
+                });
+            }
+        }
+
+        // Load system information
+        async function loadSystemInfo() {
+            try {
+                const response = await fetch('/system_info');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const info = data.data;
+                    document.getElementById('downloader-status').textContent = info.running ? 'Running' : 'Stopped';
+                    document.getElementById('queue-size').textContent = info.queue_size;
+                    document.getElementById('base-folder').textContent = info.base_folder;
+                    document.getElementById('nb-days-download').textContent = info.nb_days_to_download;
+                    
+                    // Update connection status
+                    const statusBadge = document.getElementById('connection-status');
+                    if (info.running) {
+                        statusBadge.className = 'badge bg-success';
+                        statusBadge.innerHTML = '<span class="status-indicator status-active"></span> Connected';
+                    } else {
+                        statusBadge.className = 'badge bg-danger';
+                        statusBadge.innerHTML = '<span class="status-indicator status-inactive"></span> Disconnected';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load system info:', error);
+            }
+        }
+
+        // Load download status
+        async function loadDownloadStatus() {
+            try {
+                const response = await fetch('/download_status');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    updateSymbolsTable(data.data);
+                    updateDownloadProgress();
+                }
+            } catch (error) {
+                console.error('Failed to load download status:', error);
+            }
+        }
+
+        // Update symbols table
+        function updateSymbolsTable(symbols) {
+            const tbody = document.getElementById('symbols-table');
+            
+            if (symbols.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="11" class="text-center py-4">
+                            <p>No symbols configured. Add a symbol to start downloading.</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = symbols.map(symbol => `
+                <tr>
+                    <td>${symbol.exchange}</td>
+                    <td><strong>${symbol.symbol}</strong></td>
+                    <td>${symbol.connector}</td>
+                    <td>${symbol.market_type}</td>
+                    <td>${symbol.nbdays_on_drive}</td>
+                    <td>${symbol.first_date || '-'}</td>
+                    <td>${symbol.last_date || '-'}</td>
+                    <td>
+                        ${symbol.nb_missings > 0 ? 
+                            `<span class="badge bg-warning">${symbol.nb_missings}</span>` : 
+                            '<span class="badge bg-success">0</span>'
+                        }
+                    </td>
+                    <td>
+                        <span class="status-${symbol.status.toLowerCase().replace(/\s+/g, '-')}">
+                            ${symbol.status}
+                        </span>
+                    </td>
+                    <td>
+                        ${symbol.total_days > 0 ? 
+                            `<div class="progress" style="height: 20px;">
+                                <div class="progress-bar" style="width: ${(symbol.completed_days / symbol.total_days) * 100}%">
+                                    ${symbol.completed_days}/${symbol.total_days}
+                                </div>
+                            </div>` : 
+                            '-'
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="showCandleChart('${symbol.connector}', '${symbol.exchange}', '${symbol.market_type}', '${symbol.symbol}')" title="Show Chart">
+                            <i class="bi bi-graph-up"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeSymbol('${symbol.exchange}', '${symbol.symbol}')" title="Remove">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Update download progress
+        async function updateDownloadProgress() {
+            try {
+                const response = await fetch('/download_progress');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const progress = data.data;
+                    document.getElementById('current-symbol').textContent = progress.current_symbol || '-';
+                    document.getElementById('current-date').textContent = progress.current_date || '-';
+                    
+                    // Show/hide progress container
+                    const progressContainer = document.getElementById('progress-container');
+                    if (progress.current_symbol) {
+                        progressContainer.style.display = 'block';
+                        const percent = progress.total_days > 0 ? 
+                            Math.round((progress.completed_days / progress.total_days) * 100) : 0;
+                        document.getElementById('progress-text').textContent = 
+                            `Downloading ${progress.current_symbol} - ${progress.current_date}`;
+                        document.getElementById('progress-percent').textContent = `${percent}%`;
+                        document.getElementById('progress-bar').style.width = `${percent}%`;
+                    } else {
+                        progressContainer.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to update download progress:', error);
+            }
+        }
+
+        // Handle add symbol form submission
+        async function handleAddSymbol(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const symbolData = {
+                connector: formData.get('connector'),
+                exchange: formData.get('exchange'),
+                market_type: formData.get('market_type'),
+                symbol: formData.get('symbol').toUpperCase()
+            };
+
+            try {
+                // Try to get token from various sources
+                let token = null;
+
+                // First check localStorage (from auto-login)
+                token = localStorage.getItem('service_token');
+
+                // Fallback to URL param
+                if (!token) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    token = urlParams.get('token');
+                }
+
+                const response = await fetch('/add_symbol', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': token ? `Bearer ${token}` : ''
+                    },
+                    body: JSON.stringify(symbolData)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSuccess(result.message);
+                    event.target.reset();
+                    loadDownloadStatus();
+                } else {
+                    showError(result.detail || 'Failed to add symbol');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            }
+        }
+
+        // Remove symbol
+        async function removeSymbol(exchange, symbol) {
+            if (!confirm(`Are you sure you want to remove ${exchange}:${symbol} from active downloading?`)) {
+                return;
+            }
+
+            try {
+                // Try to get token from various sources
+                let token = null;
+
+                // First check localStorage (from auto-login)
+                token = localStorage.getItem('service_token');
+
+                // Fallback to URL param
+                if (!token) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    token = urlParams.get('token');
+                }
+
+                const response = await fetch('/remove_symbol', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': token ? `Bearer ${token}` : ''
+                    },
+                    body: JSON.stringify({ exchange, symbol })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSuccess(result.message);
+                    loadDownloadStatus();
+                } else {
+                    showError(result.detail || 'Failed to remove symbol');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            }
+        }
+
+        // Start downloader
+        async function startDownloader() {
+            try {
+                // Try to get token from various sources
+                let token = null;
+
+                // First check localStorage (from auto-login)
+                token = localStorage.getItem('service_token');
+
+                // Fallback to URL param
+                if (!token) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    token = urlParams.get('token');
+                }
+
+                const response = await fetch('/start_downloader', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : ''
+                    }
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSuccess(result.message);
+                    loadSystemInfo();
+                } else {
+                    showError(result.detail || 'Failed to start downloader');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            }
+        }
+
+        // Stop downloader
+        async function stopDownloader() {
+            try {
+                // Try to get token from various sources
+                let token = null;
+
+                // First check localStorage (from auto-login)
+                token = localStorage.getItem('service_token');
+
+                // Fallback to URL param
+                if (!token) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    token = urlParams.get('token');
+                }
+
+                const response = await fetch('/stop_downloader', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : ''
+                    }
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSuccess(result.message);
+                    loadSystemInfo();
+                } else {
+                    showError(result.detail || 'Failed to stop downloader');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            }
+        }
+
+        // Save configuration
+        async function saveConfiguration() {
+            try {
+                // Try to get token from various sources
+                let token = null;
+
+                // First check localStorage (from auto-login)
+                token = localStorage.getItem('service_token');
+
+                // Fallback to URL param
+                if (!token) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    token = urlParams.get('token');
+                }
+
+                const response = await fetch('/config', {
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : ''
+                    }
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    currentConfig = data.data;
+                    
+                    const saveResponse = await fetch('/save_config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': token ? `Bearer ${token}` : ''
+                        },
+                        body: JSON.stringify({ config: currentConfig })
+                    });
+
+                    const result = await saveResponse.json();
+                    
+                    if (saveResponse.ok) {
+                        showSuccess(result.message + (result.note ? ' Note: ' + result.note : ''));
+                    } else {
+                        showError(result.detail || 'Failed to save configuration');
+                    }
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            }
+        }
+
+        // Export configuration
+        async function exportConfiguration() {
+            try {
+                const response = await fetch('/config');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'downloader_config.json';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }
+            } catch (error) {
+                showError('Failed to export configuration: ' + error.message);
+            }
+        }
+
+        // Show error modal
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            new bootstrap.Modal(document.getElementById('errorModal')).show();
+        }
+
+        // Show success modal
+        function showSuccess(message) {
+            document.getElementById('success-message').textContent = message;
+            new bootstrap.Modal(document.getElementById('successModal')).show();
+        }
+
+        // Start auto refresh
+        function startAutoRefresh() {
+            refreshInterval = setInterval(() => {
+                loadSystemInfo();
+                loadDownloadStatus();
+                updateLastUpdated();
+            }, 5000); // Refresh every 5 seconds
+        }
+
+        // Update last updated timestamp
+        function updateLastUpdated() {
+            document.getElementById('last-updated').textContent = 
+                'Last updated: ' + new Date().toLocaleTimeString();
+        }
+
+        // Show candle chart in modal
+        function showCandleChart(connector, exchange, marketType, symbol) {
+            // Set modal title
+            document.getElementById('modal-chart-symbol').textContent = `${exchange}:${symbol}`;
+            
+            // Set default date range (last 7 days)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(endDate.getDate() - 7);
+            
+            document.getElementById('modal-chart-start-date').value = startDate.toISOString().split('T')[0];
+            document.getElementById('modal-chart-end-date').value = endDate.toISOString().split('T')[0];
+            
+            // Store chart parameters
+            window.currentChartParams = {
+                connector: connector,
+                exchange: exchange,
+                marketType: marketType,
+                symbol: symbol
+            };
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('chartModal'));
+            modal.show();
+            
+            // Load chart data after modal is shown
+            setTimeout(() => {
+                updateModalChart();
+            }, 500);
+        }
+
+        // Fetch candle data from API
+        async function fetchCandleData(connector, exchange, marketType, symbol, startDate, endDate) {
+            try {
+                const params = new URLSearchParams({
+                    connector: connector,
+                    exchange: exchange,
+                    market_type: marketType,
+                    symbol: symbol,
+                    startdate: startDate,
+                    enddate: endDate
+                });
+                
+                const response = await fetch(`/ohlcv?${params}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    return data;
+                } else {
+                    throw new Error(data.message || 'Failed to fetch candle data');
+                }
+            } catch (error) {
+                console.error('Error fetching candle data:', error);
+                throw error;
+            }
+        }
+
+        // Convert OHLCV data to candlestick format
+        function convertToCandlestickData(data) {
+            return data.map(candle => ({
+                x: candle.timestamp,
+                o: candle.open,
+                h: candle.high,
+                l: candle.low,
+                c: candle.close
+            }));
+        }
+
+        // Create candlestick chart
+        function createCandlestickChart(canvasId, data, symbol) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (canvasId === 'candle-chart' && currentChart) {
+                currentChart.destroy();
+                currentChart = null;
+            } else if (canvasId === 'modal-candle-chart' && modalChart) {
+                modalChart.destroy();
+                modalChart = null;
+            }
+            
+            const chartConfig = {
+                type: 'candlestick',
+                data: {
+                    datasets: [{
+                        label: `${symbol} OHLCV`,
+                        data: convertToCandlestickData(data)
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM dd, HH:mm'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Price'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const candle = context.raw;
+                                    return [
+                                        `Open: ${candle.o.toFixed(4)}`,
+                                        `High: ${candle.h.toFixed(4)}`,
+                                        `Low: ${candle.l.toFixed(4)}`,
+                                        `Close: ${candle.c.toFixed(4)}`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            const chart = new Chart(ctx, chartConfig);
+            
+            // Store chart reference
+            if (canvasId === 'candle-chart') {
+                currentChart = chart;
+            } else if (canvasId === 'modal-candle-chart') {
+                modalChart = chart;
+            }
+            
+            return chart;
+        }
+
+        // Update inline chart
+        async function updateInlineChart() {
+            if (!window.currentChartParams) return;
+            
+            const startDate = document.getElementById('chart-start-date').value;
+            const endDate = document.getElementById('chart-end-date').value;
+            
+            if (!startDate || !endDate) {
+                showError('Please select both start and end dates');
+                return;
+            }
+            
+            showLoading('chart-loading');
+            hideError('chart-error');
+            
+            try {
+                const response = await fetchCandleData(
+                    window.currentChartParams.connector,
+                    window.currentChartParams.exchange,
+                    window.currentChartParams.marketType,
+                    window.currentChartParams.symbol,
+                    startDate,
+                    endDate
+                );
+                
+                if (response.count === 0) {
+                    showError('chart-error', response.message || 'No data found');
+                    return;
+                }
+                
+                createCandlestickChart('candle-chart', response.data, response.symbol);
+                
+            } catch (error) {
+                showError('chart-error', error.message);
+            } finally {
+                hideLoading('chart-loading');
+            }
+        }
+
+        // Update modal chart
+        async function updateModalChart() {
+            if (!window.currentChartParams) return;
+            
+            const startDate = document.getElementById('modal-chart-start-date').value;
+            const endDate = document.getElementById('modal-chart-end-date').value;
+            
+            if (!startDate || !endDate) {
+                showError('modal-chart-error', 'Please select both start and end dates');
+                return;
+            }
+            
+            showLoading('modal-chart-loading');
+            hideError('modal-chart-error');
+            
+            try {
+                const response = await fetchCandleData(
+                    window.currentChartParams.connector,
+                    window.currentChartParams.exchange,
+                    window.currentChartParams.marketType,
+                    window.currentChartParams.symbol,
+                    startDate,
+                    endDate
+                );
+                
+                if (response.count === 0) {
+                    showError('modal-chart-error', response.message || 'No data found');
+                    return;
+                }
+                
+                createCandlestickChart('modal-candle-chart', response.data, response.symbol);
+                
+            } catch (error) {
+                showError('modal-chart-error', error.message);
+            } finally {
+                hideLoading('modal-chart-loading');
+            }
+        }
+
+        // Export chart data
+        function exportChartData() {
+            if (!currentChart || !window.currentChartParams) return;
+            
+            const data = currentChart.data.datasets[0].data;
+            const csvContent = convertToCSV(data, window.currentChartParams.symbol);
+            downloadCSV(csvContent, `${window.currentChartParams.symbol}_candles.csv`);
+        }
+
+        // Export modal chart data
+        function exportModalChartData() {
+            if (!modalChart || !window.currentChartParams) return;
+            
+            const data = modalChart.data.datasets[0].data;
+            const csvContent = convertToCSV(data, window.currentChartParams.symbol);
+            downloadCSV(csvContent, `${window.currentChartParams.symbol}_candles.csv`);
+        }
+
+        // Convert chart data to CSV
+        function convertToCSV(data, symbol) {
+            const headers = ['Timestamp', 'Open', 'High', 'Low', 'Close'];
+            const rows = data.map(candle => [
+                new Date(candle.x).toISOString(),
+                candle.o.toFixed(4),
+                candle.h.toFixed(4),
+                candle.l.toFixed(4),
+                candle.c.toFixed(4)
+            ]);
+            
+            const csvContent = [
+                `# ${symbol} OHLCV Data`,
+                headers.join(','),
+                ...rows.map(row => row.join(','))
+            ].join('\n');
+            
+            return csvContent;
+        }
+
+        // Download CSV file
+        function downloadCSV(content, filename) {
+            const blob = new Blob([content], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Show loading state
+        function showLoading(elementId) {
+            document.getElementById(elementId).style.display = 'block';
+        }
+
+        // Hide loading state
+        function hideLoading(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+
+        // Show error message
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        // Hide error message
+        function hideError(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+
+        // Hide inline chart
+        function hideChart() {
+            document.getElementById('chart-section').style.display = 'none';
+            if (currentChart) {
+                currentChart.destroy();
+                currentChart = null;
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            if (currentChart) {
+                currentChart.destroy();
+            }
+            if (modalChart) {
+                modalChart.destroy();
+            }
+        });
+    </script>
+</body>
+</html>

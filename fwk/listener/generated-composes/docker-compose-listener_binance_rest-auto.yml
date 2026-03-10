@@ -1,0 +1,40 @@
+services:
+  listener_binance_rest:
+    build:
+      context: ..
+      dockerfile: dockerfile_list
+    ports:
+      - "8013:8000"
+    env_file:
+      - ../../.env.prod
+    environment:
+      - REDIS_HOST=redis
+      - LISTENER_ID=listener_binance_rest
+      - SYSTEM_NAME=listener
+      - SERVICE_NAME=listener_binance_rest
+      - SERVICE_ID=listener_binance_rest-id
+      - SERVICE_PATH=listener_ui
+      - DOCKER_URL=http://listener_binance_rest:8000/
+      - EXTERNAL_URL=http://192.168.0.101:8013/
+      - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+      - PORTAL_URL=http://portal:8000
+    volumes:
+      - ../config:/app/config
+    restart: unless-stopped
+    networks:
+      - net_redis_6477
+      - web_list
+      - portal-network
+volumes:
+  redis_data:
+  
+networks:
+  net_redis_6477:
+    external: true
+    name: net_redis_6477
+    driver: bridge
+  web_list:
+    driver: bridge
+  portal-network:
+    name: portal-network
+    external: true

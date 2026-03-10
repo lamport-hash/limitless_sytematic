@@ -1,0 +1,14 @@
+services:
+  visualiser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - /home/brian/sing/data/bundle:/app/data/bundle
+      - /home/brian/sing/fwk:/app/fwk
+    environment:
+      - BUNDLE_DIR=/app/data/bundle
+      - PYTHONPATH=/app:/app/fwk
+    restart: unless-stopped

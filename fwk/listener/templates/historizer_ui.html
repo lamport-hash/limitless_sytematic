@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Singularity Listener Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #28a745;
+        }
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        .last-updated {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="display-6">
+                <i class="bi bi-archive"></i> Singularity Listener Dashboard
+            </h1>
+            <div>
+                <span id="redis-status" class="badge bg-danger">
+                    <span class="status-indicator status-inactive"></span> Redis Disconnected
+                </span>
+                <span id="last-updated" class="ms-2 last-updated">Never updated</span>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Redis Status <button id="refresh-status-btn" class="btn btn-sm btn-outline-primary">Refresh</button></h5>
+                        <p class="mb-1">Connection</p>
+                        <h3 id="redis-connection">Checking...</h3>
+                        <p class="mb-1">Last Historisation</p>
+                        <h4 id="last-hist">Unknown</h4>
+                        <p class="mb-1">Nb Candles</p>
+                        <h5 id="total-candles">Loading...</h5>
+                        <p class="mb-1">Nb Trades</p>
+                        <h5 id="total-trades">Loading...</h5>
+                        <p class="mb-1">Nb OB</p>
+                        <h5 id="total-ob">Loading...</h5>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Actions</h5>
+                        <br>
+                        <a href="/show_redis_data" class="btn btn-info mt-2">
+                            <i class="bi bi-eye"></i> Show Redis Data
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0"><i class="bi bi-trash"></i> Delete Historical Data</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Use this form to delete historical market data for specific dates.</p>
+
+                        <div class="alert alert-warning" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <strong>Warning:</strong> This action cannot be undone. Deleted data will be permanently removed.
+                        </div>
+
+                        <form id="delete-form">
+                            <div class="mb-3">
+                                <label for="date-input" class="form-label">Select Date to Delete</label>
+                                <input type="date" class="form-control" id="date-input" required>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-danger" id="delete-btn">
+                                    <i class="bi bi-trash"></i> Delete Data for Selected Date
+                                </button>
+                            </div>
+                        </form>
+
+                        <div id="delete-result" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Dates with Data</h5>
+                        <div class="mb-3">
+                            <label for="dates-symbol-select" class="form-label">Exchange/Instrument</label>
+                            <select class="form-select" id="dates-symbol-select">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="dates-month-select" class="form-label">Month</label>
+                            <select class="form-select" id="dates-month-select">
+                                <option value="">Last 30 days</option>
+                                <option value="2025-11">November 2025</option>
+                                <option value="2025-10">October 2025</option>
+                                <option value="2025-09">September 2025</option>
+                                <option value="2025-08">August 2025</option>
+                                <option value="2025-07">July 2025</option>
+                                <option value="2025-06">June 2025</option>
+                                <option value="2025-05">May 2025</option>
+                                <option value="2025-04">April 2025</option>
+                                <option value="2025-03">March 2025</option>
+                                <option value="2025-02">February 2025</option>
+                                <option value="2025-01">January 2025</option>
+                                <option value="2024-12">December 2024</option>
+                                <option value="2024-11">November 2024</option>
+                                <option value="2024-10">October 2024</option>
+                                <option value="2024-09">September 2024</option>
+                                <option value="2024-08">August 2024</option>
+                                <option value="2024-07">July 2024</option>
+                                <option value="2024-06">June 2024</option>
+                                <option value="2024-05">May 2024</option>
+                                <option value="2024-04">April 2024</option>
+                                <option value="2024-03">March 2024</option>
+                                <option value="2024-02">February 2024</option>
+                                <option value="2024-01">January 2024</option>
+                            </select>
+                        </div>
+                        <button id="refresh-dates-btn" class="btn btn-outline-primary mb-3">Refresh Dates</button>
+                        <div class="table-responsive">
+                            <table class="table table-striped" id="dates-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Nb Candles</th>
+                                        <th>Nb Trades</th>
+                                        <th>Nb OB</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Active Symbols <button id="refresh-symbols-btn" class="btn btn-sm btn-outline-primary">Refresh</button></h5>
+                        <div class="mb-3">
+                            <label for="symbol-select" class="form-label">Select Symbol for Orderbook Chart</label>
+                            <select class="form-select" id="symbol-select">
+                                <option value="">Choose a symbol...</option>
+                            </select>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped" id="symbols-table">
+                                <thead>
+                                    <tr>
+                                        <th>Exchange</th>
+                                        <th>Symbol</th>
+                                        <th>Last Update</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="3">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Orderbook Chart</h5>
+                        <canvas id="orderbook-chart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Historisation Status</h5>
+                        <div id="hist-status">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Set today's date as default for delete form
+        document.getElementById('date-input').valueAsDate = new Date();
+
+        // Delete form handler
+        document.getElementById('delete-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const dateInput = document.getElementById('date-input').value;
+            const deleteBtn = document.getElementById('delete-btn');
+            const resultDiv = document.getElementById('delete-result');
+
+            if (!dateInput) {
+                resultDiv.innerHTML = '<div class="alert alert-danger">Please select a date.</div>';
+                return;
+            }
+
+            // Disable button and show loading state
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Deleting...';
+
+            try {
+                const response = await fetch(`/hist_delete?date=${dateInput.replaceAll('-', '')}`);
+                const data = await response.text();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <h5><i class="bi bi-check-circle"></i> Data Deletion Successful</h5>
+                            <p>Data for ${dateInput} has been deleted.</p>
+                            <details>
+                                <summary>Details</summary>
+                                <div class="mt-2">${data}</div>
+                            </details>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h5><i class="bi bi-exclamation-circle"></i> Deletion Failed</h5>
+                            <p>${data}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5><i class="bi bi-exclamation-circle"></i> Error</h5>
+                        <p>Failed to delete data: ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                // Re-enable button
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = '<i class="bi bi-trash"></i> Delete Data for Selected Date';
+            }
+        });
+
+        // Function to check Redis status
+        async function checkRedisStatus() {
+            try {
+                const response = await fetch('/show_redis_data?nb_days=1');
+                if (response.ok) {
+                    document.getElementById('redis-status').className = 'badge bg-success';
+                    document.getElementById('redis-status').innerHTML = '<span class="status-indicator status-active"></span> Redis Connected';
+                    document.getElementById('redis-connection').textContent = 'Connected';
+                } else {
+                    throw new Error('Not connected');
+                }
+            } catch (error) {
+                document.getElementById('redis-status').className = 'badge bg-danger';
+                document.getElementById('redis-status').innerHTML = '<span class="status-indicator status-inactive"></span> Redis Disconnected';
+                document.getElementById('redis-connection').textContent = 'Disconnected';
+            }
+            document.getElementById('last-updated').textContent = 'Last checked: ' + new Date().toLocaleTimeString();
+        }
+
+        // Function to load totals
+        async function loadTotals() {
+            try {
+                const response = await fetch('/get_totals');
+                const data = await response.json();
+                document.getElementById('total-candles').textContent = data.total_candles;
+                document.getElementById('total-trades').textContent = data.total_trades;
+                document.getElementById('total-ob').textContent = data.total_ob;
+            } catch (error) {
+                console.error('Error loading totals:', error);
+                document.getElementById('total-candles').textContent = 'Error';
+                document.getElementById('total-trades').textContent = 'Error';
+                document.getElementById('total-ob').textContent = 'Error';
+            }
+        }
+
+        // Refresh status button
+        document.getElementById('refresh-status-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('refresh-status-btn');
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            try {
+                await checkRedisStatus();
+                await loadTotals();
+                btn.textContent = 'Refreshed';
+                setTimeout(() => btn.textContent = 'Refresh', 2000);
+            } catch (error) {
+                btn.textContent = 'Error';
+                setTimeout(() => btn.textContent = 'Refresh', 2000);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // Function to load dates data
+        async function loadDatesData() {
+            try {
+                const symbol = document.getElementById('dates-symbol-select').value;
+                const month = document.getElementById('dates-month-select').value;
+                let url = '/get_dates_data?';
+                if (month) url += 'month=' + month + '&';
+                if (symbol) url += 'symbol=' + encodeURIComponent(symbol);
+                const response = await fetch(url);
+                const data = await response.json();
+                const tbody = document.querySelector('#dates-table tbody');
+                tbody.innerHTML = '';
+                data.dates.forEach(dateData => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${dateData.date}</td>
+                        <td>${dateData.nb_candles}</td>
+                        <td>${dateData.nb_trades}</td>
+                        <td>${dateData.nb_ob}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading dates data:', error);
+                document.querySelector('#dates-table tbody').innerHTML = '<tr><td colspan="4">Error loading data</td></tr>';
+            }
+        }
+
+        // Refresh dates button
+        document.getElementById('refresh-dates-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('refresh-dates-btn');
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            try {
+                await loadDatesData();
+                btn.textContent = 'Refreshed';
+                setTimeout(() => btn.textContent = 'Refresh', 2000);
+            } catch (error) {
+                btn.textContent = 'Error';
+                setTimeout(() => btn.textContent = 'Refresh', 2000);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // Function to force historisation
+        document.getElementById('force-hist-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('force-hist-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processing...';
+            try {
+                const response = await fetch('/force_hist_1h30');
+                const result = await response.text();
+                document.getElementById('hist-status').innerHTML = result;
+                btn.innerHTML = '<i class="bi bi-check-circle"></i> Done';
+            } catch (error) {
+                document.getElementById('hist-status').innerHTML = 'Error: ' + error.message;
+                btn.innerHTML = '<i class="bi bi-x-circle"></i> Failed';
+            } finally {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-play-circle"></i> Force Historisation (1h30 ago)';
+                }, 3000);
+            }
+        });
+
+
+        let symbolsData = [];
+        let orderbookChart = null;
+
+        // Function to load exchange/symbol combinations for dates filter
+        async function loadExchangeSymbols() {
+            try {
+                const response = await fetch('/get_exchanges');
+                const data = await response.json();
+                const select = document.getElementById('dates-symbol-select');
+                select.innerHTML = '<option value="">All</option>';
+                data.symbols.forEach(sym => {
+                    const option = document.createElement('option');
+                    option.value = sym;
+                    option.textContent = sym;
+                    select.appendChild(option);
+                });
+                // Set default to binance/BTCUSDT if available
+                if (data.symbols.includes('binance/BTCUSDT')) {
+                    select.value = 'binance/BTCUSDT';
+                }
+            } catch (error) {
+                console.error('Error loading exchange symbols:', error);
+            }
+        }
+
+        // Function to load active symbols from Redis
+        async function loadActiveSymbols() {
+            try {
+                const response = await fetch('/get_symbols');
+                const data = await response.json();
+                symbolsData = data.symbols;
+
+                // Populate table
+                const tbody = document.querySelector('#symbols-table tbody');
+                tbody.innerHTML = '';
+                symbolsData.forEach(symbol => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${symbol.exchange}</td>
+                        <td>${symbol.symbol}</td>
+                        <td>${symbol.last_update_human}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                // Populate dropdown for orderbook
+                const select = document.getElementById('symbol-select');
+                select.innerHTML = '<option value="">Choose a symbol...</option>';
+                symbolsData.forEach(symbol => {
+                    const option = document.createElement('option');
+                    option.value = `${symbol.exchange}:${symbol.symbol}`;
+                    option.textContent = `${symbol.exchange}:${symbol.symbol}`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading active symbols:', error);
+                document.querySelector('#symbols-table tbody').innerHTML = '<tr><td colspan="3">Error loading symbols</td></tr>';
+            }
+        }
+
+        // Refresh symbols button
+        document.getElementById('refresh-symbols-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('refresh-symbols-btn');
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            try {
+                await loadActiveSymbols();
+                btn.textContent = 'Refreshed';
+                setTimeout(() => btn.textContent = 'Refresh', 2000);
+            } catch (error) {
+                btn.textContent = 'Error';
+                setTimeout(() => btn.textContent = 'Refresh', 2000);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // Function to load and display orderbook
+        async function loadOrderbook(exchange, symbol) {
+            try {
+                const response = await fetch(`/get_orderbook?exchange=${exchange}&symbol=${symbol}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Orderbook not found');
+                    return;
+                }
+
+                // Prepare data for chart
+                const bids = data.bids.map(([price, qty]) => ({ price: parseFloat(price), qty: parseFloat(qty) }));
+                const asks = data.asks.map(([price, qty]) => ({ price: parseFloat(price), qty: parseFloat(qty) }));
+
+                const labels = [...bids.map(b => b.price.toFixed(2)), ...asks.map(a => a.price.toFixed(2))];
+                const bidQtys = bids.map(b => b.qty);
+                const askQtys = asks.map(a => a.qty);
+
+                // Destroy previous chart
+                if (orderbookChart) {
+                    orderbookChart.destroy();
+                }
+
+                // Create new chart
+                const ctx = document.getElementById('orderbook-chart').getContext('2d');
+                orderbookChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Bids',
+                            data: [...bidQtys, ...new Array(askQtys.length).fill(0)],
+                            backgroundColor: 'rgba(0, 255, 0, 0.5)',
+                            borderColor: 'rgba(0, 255, 0, 1)',
+                            borderWidth: 1
+                        }, {
+                            label: 'Asks',
+                            data: [...new Array(bidQtys.length).fill(0), ...askQtys],
+                            backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                            borderColor: 'rgba(255, 0, 0, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `Orderbook for ${exchange}:${symbol} (${new Date(data.timestamp).toLocaleString()})`
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading orderbook:', error);
+                alert('Error loading orderbook');
+            }
+        }
+
+        // Handle symbol selection
+        document.getElementById('symbol-select').addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (value) {
+                const [exchange, symbol] = value.split(':');
+                loadOrderbook(exchange, symbol);
+            } else {
+                if (orderbookChart) {
+                    orderbookChart.destroy();
+                    orderbookChart = null;
+                }
+            }
+        });
+
+        // Initial setup
+        loadExchangeSymbols();
+        loadActiveSymbols();
+    </script>
+</body>
+</html>

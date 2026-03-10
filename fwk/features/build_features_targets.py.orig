@@ -1,0 +1,785 @@
+# base
+import pandas as pd
+import numpy as np
+import os
+
+from python_lib.algo.features.ta_utils import numba_parabolic_sar, numba_atr, numba_rsi, numba_ema, rolling_std, \
+    add_accumulation_distribution_index
+from python_lib.data.load_utils import load_concat_clean_data_for_coin
+from python_lib.algo.features.lag_features import add_hourly_lagged_deltas
+from python_lib.algo.features.trend_indicator import compute_trend_smootheness
+from python_lib.algo.features.order_flow_features import add_all_orderflow_features
+from python_lib.algo.features.features_builder import add_emas
+import python_lib.algo.features.features_utils as features_utils
+
+from python_lib.algo.dataframes.df_utils import convert_df_cols_float_to_float, scale_dataframe_columns, \
+    read_parquet_to_f16
+
+from python_lib.algo.dataframes.df_utils import g_close_col, g_open_col, g_high_col, g_low_col, g_volume_col, g_mid_col, \
+    g_mid2_col, g_close_time_col, g_open_time_col, g_index_col, g_qa_vol_col, g_nt_col, g_la_vol_col, g_lqa_vol_col
+from python_lib.algo.dataframes.df_utils import g_precision
+
+import logging
+
+logger_s = logging.getLogger(__name__)
+logger_s.setLevel(logging.WARNING)
+
+
+def split_contiguous_rows(p_df, p_valid_col_name, N_first_rows_not_valid):
+    """
+    Split a dataframe into separate dataframes for each group of contiguous rows
+    where the indicator column ('valid_row') is set to 1.
+
+    This revised version uses Pandas grouping instead of an explicit loop over rows.
+    It offers similar functionality with improved performance and cleaner code.
+
+    Args:
+        p_df (pd.DataFrame): The input dataframe with a 'valid_row' column (0 or 1).
+        p_valid_col_name (str): The name of the column to create/update with
+            boolean validity flags in each segment.
+        N_first_rows_not_valid (int): Number of initial rows in each segment to mark as not valid.
+
+    Returns:
+        tuple:
+            dataframes (list[pd.DataFrame]): A list of segment dataframes containing
+                contiguous valid rows.
+            labels (list[list]): A list of [Open time, Close time] for each segment.
+    """
+
+    # Create a boolean mask for valid rows
+    valid_mask = p_df['valid_row'].eq(1).astype(bool)  # <-- just add .astype(bool)
+
+    # Build a group identifier for each contiguous run of valid rows
+    # We'll increment a counter each time valid_mask changes (diff() != 0)
+    groups = valid_mask.diff().fillna(valid_mask).ne(0).cumsum() * valid_mask
+
+    dataframes = []
+    labels = []
+
+    # Group the dataframe by these contiguous segments
+    for group_id, segment in p_df.groupby(groups):
+        # group_id == 0 means invalid rows, so skip it
+        if group_id == 0:
+            continue
+
+        # For the current segment, update validity of the rows
+        segment = segment.copy()
+        n = len(segment)
+        # Mark the first N_first_rows_not_valid + 1 rows as False (if possible)
+        # The rest are True
+        cutoff = min(N_first_rows_not_valid + 1, n)
+        segment[p_valid_col_name] = ([False] * cutoff) + ([True] * (n - cutoff))
+
+        # Reset index for clarity in the returned segment
+        segment.reset_index(drop=True, inplace=True)
+
+        # Collect the segment and label (start and end times)
+        dataframes.append(segment)
+        labels.append([segment.iloc[0]['S_open_time_i'], segment.iloc[-1][g_close_time_col]])
+
+    return dataframes, labels
+
+
+def add_minutes_since_2000(df, datetime_col, new_col_name):
+    """
+    Adds a new column with the number of minutes since January 1, 2000, for a datetime column.
+
+    Parameters:
+        df (pd.DataFrame): The input DataFrame.
+        datetime_col (str): The name of the datetime column.
+        new_col_name (str): The name of the new column to create.
+
+    Returns:
+        pd.DataFrame: The DataFrame with the new column added.
+    """
+    # Define the reference time: January 1, 2000
+    reference_time = pd.Timestamp("2000-01-01 00:00:00")
+
+    # Ensure the datetime column is in datetime format
+    df[datetime_col] = pd.to_datetime(df[datetime_col])
+
+    # Calculate the number of minutes since the reference time
+    df[new_col_name] = ((df[datetime_col] - reference_time).dt.total_seconds() // 60).astype("int64")
+
+    return df
+
+
+def resample_ohlcv(df, n, p_valid_col_name):
+    """
+    Resample 1-minute OHLCV dataframe to N-minute OHLCV.
+
+    df: DataFrame with columns ['open','high','low','close','volume',g_index_col]
+    n : int, number of minutes for resampling
+    """
+    # base datetime = 2000-01-01 00:00
+    base = pd.Timestamp("2000-01-01")
+    df = df.copy()
+    df['datetime'] = base + pd.to_timedelta(df[g_index_col], unit='m')
+    df.set_index('datetime', inplace=True)
+
+    if g_close_col in df.columns:
+        ohlcv_dict = {
+            g_open_col: 'first',
+            g_high_col: 'max',
+            g_low_col: 'min',
+            g_close_col: 'last',
+            g_close_time_col: 'last',
+            g_open_time_col: 'first',
+            g_volume_col: 'sum',
+            g_qa_vol_col: 'sum',
+            g_nt_col: 'sum',
+            g_la_vol_col: 'sum',
+            g_lqa_vol_col: 'sum',
+            p_valid_col_name: 'max',
+            g_index_col: 'last'
+        }
+    else:
+        ohlcv_dict = {
+            'Open': 'first',
+            'High': 'max',
+            'Low': 'min',
+            'Close': 'last',
+            'Volume': 'sum',
+            g_index_col: 'last'
+        }
+
+    resampled_df = df.resample(f'{n}min').apply(ohlcv_dict).dropna(how='any')
+    resampled_df.reset_index(inplace=True)
+    resampled_df[g_index_col] = resampled_df[g_index_col].astype('Int64')
+
+    # if not g_close_col in df.columns:
+    #    resampled_df[g_index_col] = ((resampled_df['datetime'] - base).dt.total_seconds() / 60).astype(int)
+
+    return resampled_df
+
+
+def add_min_max_log_returns(p_df, N, col_name, valid_col_name, is_log=True):
+    """
+    Adds minimum and maximum returns over the next N periods to the DataFrame.
+
+    Args:
+        p_df (pd.DataFrame): Input DataFrame with a 'col_name' column and 'valid_col_name' column
+        N (int): Number of periods to look ahead.
+
+    Returns:
+        pd.DataFrame: DataFrame with added 'min_return' and 'max_return' columns.
+    """
+    # Create columns for shifted values of 'mid'
+    shifted = np.column_stack([p_df[col_name].shift(-i) for i in range(1, N + 1)])
+    shifted_low = np.column_stack([p_df[g_low_col].shift(-i) for i in range(1, N + 1)])
+    shifted_high = np.column_stack([p_df[g_high_col].shift(-i) for i in range(1, N + 1)])
+
+    if is_log:
+        # Calculate returns (row-wise operations)
+        returns = shifted / p_df[col_name].values[:, None]
+        returns_low = shifted_low / p_df[col_name].values[:, None]
+        returns_high = shifted_high / p_df[col_name].values[:, None]
+    else:
+        # Calculate returns (row-wise operations)
+        returns = (shifted - p_df[col_name].values[:, None]) / p_df[col_name].values[:, None]
+        returns_low = (shifted_low - p_df[col_name].values[:, None]) / p_df[col_name].values[:, None]
+        returns_high = (shifted_high - p_df[col_name].values[:, None]) / p_df[col_name].values[:, None]
+
+    # Calculate min and max along the rows
+    min_return = np.min(returns, axis=1)
+    max_return = np.max(returns, axis=1)
+    mid_return = (min_return + max_return) / 2  # todo check this idea, or take the last mid value??
+
+    min_return_low = np.min(returns_low, axis=1)
+    max_return_high = np.max(returns_high, axis=1)
+
+    if is_log:
+        min_return = np.log(min_return)
+        max_return = np.log(max_return)
+        mid_return = np.log(mid_return)
+
+        max_spread = np.log(max_return_high) - np.log(min_return_low)
+
+        # Add new columns
+        name_min = col_name + '_min_LR_' + str(N) + '_f16'
+        name_max = col_name + '_max_LR_' + str(N) + '_f16'
+        name_mid = col_name + '_mid_LR_' + str(N) + '_f16'
+        name_spread = col_name + '_spread_LR_' + str(N) + '_f16'
+
+    else:
+        # Add new columns
+        max_spread = (max_return_high - min_return_low)
+        name_min = col_name + '_min_R_' + str(N) + '_f16'
+        name_max = col_name + '_max_R_' + str(N) + '_f16'
+        name_mid = col_name + '_mid_R_' + str(N) + '_f16'
+        name_spread = col_name + '_spread_R_' + str(N) + '_f16'
+
+    p_df[name_min] = min_return
+    p_df[name_max] = max_return
+    p_df[name_mid] = mid_return
+    p_df[name_spread] = max_spread
+
+    # update validity
+    p_df = p_df.reset_index(drop=True)
+    p_df.loc[p_df.shape[0] - N:, valid_col_name] = False
+
+    return name_min, name_max, name_mid, name_spread
+
+
+def add_cyclical_time_features(p_df, drop_original=True):
+    """
+    Convert existing time component columns to cyclical features.
+
+    Expects columns: t_minute_of_day_ui16, t_day_of_week_ui16,
+                     t_month_of_year_ui16, t_day_of_month_ui16
+
+    Args:
+        p_df: DataFrame with pre-computed time component columns
+        drop_original: If True, drop the original time columns after encoding
+
+    Returns:
+        (df_with_cyclical, cyclical_feature_names)
+    """
+    # Map existing columns to their periods
+    time_mappings = [
+        ('t_minute_of_day_ui16', 1440),  # minutes in a day
+        ('t_day_of_week_ui16', 7),  # days in a week
+        ('t_month_of_year_ui16', 12),  # months in a year
+        ('t_day_of_month_ui16', 31)  # max days in a month
+    ]
+
+    df = p_df.copy()
+    cyclical_features = []
+
+    # Convert each time component to sin/cos pair
+    for col_name, period in time_mappings:
+        if col_name not in df.columns:
+            raise ValueError(f"Expected column '{col_name}' not found in DataFrame")
+
+        # Calculate angle
+        angle = 2 * np.pi * df[col_name] / period
+
+        # Create feature names matching the original column pattern
+        base_name = col_name.replace('_ui16', '')  # Remove type suffix
+        sin_name = f'{base_name}_sin_f32'
+        cos_name = f'{base_name}_cos_f32'
+
+        # Add cyclical features
+        df[sin_name] = np.sin(angle).astype('float32')
+        df[cos_name] = np.cos(angle).astype('float32')
+
+        cyclical_features.extend([sin_name, cos_name])
+
+    # Drop original columns if requested
+    if drop_original:
+        original_cols = [col for col, _ in time_mappings]
+        df = df.drop(columns=original_cols)
+
+    return df, cyclical_features
+
+
+def convert_columns_to_float(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    for column in columns:
+        # Skip conversion if the column is already numeric
+        if pd.api.types.is_numeric_dtype(df[column]):
+            continue
+
+        # Try to convert the column to float, handling errors
+        df[column] = pd.to_numeric(df[column], errors='coerce')
+
+        # Optional: If needed, you can handle missing values after conversion
+        # df[column].fillna(0, inplace=True)  # Example: fill NaN with 0
+    return df
+
+
+# build input for predictions
+def build_singularity_df(p_df,
+                         p_periods_rsi=[2, 15, 60, 240, 500, 1440, 2880],
+                         p_periods_emas=[2, 15, 60, 240, 500, 1440, 2880],
+                         p_periods_vols=[15, 60],
+                         p_demark_timeframes = None,
+                         p_settings_lags=(),
+                         p_periods_order_flow=[15, 120],
+                         p_periods_predict_LR=[15, 60, 240, 500],
+                         p_valid_col_name='valid_row',
+                         p_last_n_rows=-1,
+                         p_resampling_period=1,
+                         p_scaling=-1,
+                         p_scaling_fixed=False,
+                         p_scaling_ASSET='',
+                         p_verbose=False,
+                         use_cyclical_encoding=True):
+    # namming conventions:
+    ####################################################################
+    # prefixes:
+    # S_ source cols
+    # F_ features cols
+    # T_ target cols
+    # t_ seasonality cols
+    # i_ information and index cols
+    # suffixes :
+    # _f16 float 16 cols
+    # _f32 float 32 cols
+    # _f64 float 64 cols
+    # _i int64 cols
+    # _b bool cols
+    # keywords :
+    # delta a diff between 2 similar cols
+    # diff a diff between 2 non identical cols
+    # rel = relative ((b-a)/a)
+    # global variables in df_utils.py (needed for generic read_parquet_to_f16) :
+    # g_close_col = 'S_close_f32'
+    # g_open_col = 'S_open_f32'
+    # g_high_col = 'S_high_f32'
+    # g_low_col = 'S_low_f32'
+    # g_mid_col = 'F_mid_f32'
+    # g_mid2_col = 'F_mid2_f32'
+    # g_volume_col = 'S_volume_f64'
+    # g_close_time_col = 'S_close_time_i'
+    # g_open_time_col = 'S_open_time_i'
+    # g_index_col = 'i_minute_i'
+    # g_precision = '32'
+    # g_qa_vol_col = 'S_qa_volume_f64'
+    # g_nt_col = 'S_ntrades_i'
+    # g_la_vol_col = 'S_lift_asset_volume_f64'
+    # g_lqa_vol_col = 'S_lift_qa_volume_f64'
+
+    logger_s.info('******')
+    logger_s.info('STARTING build_singularity_df')
+
+    # rename Cols for binance:
+    ####################################################################
+    # todo here the mapping and rename for various exchanges
+    col_name = 'Quote asset volume'
+    if col_name in p_df.columns:
+        logger_s.info('df with old colnames renaming')
+        p_df.rename(columns={'Open': g_open_col, 'High': g_high_col, 'Low': g_low_col, 'Close': g_close_col,
+                             'Close time': g_close_time_col, 'Open time': g_open_time_col,
+                             'Volume': g_volume_col,
+                             'Quote asset volume': g_qa_vol_col,
+                             'Number of trades': g_nt_col,
+                             'Taker buy base asset volume': g_la_vol_col,
+                             'Taker buy quote asset volume': g_lqa_vol_col},
+                    inplace=True)
+    else:
+        logger_s.info('df with new colnames')
+
+    # for live mode we shirnk the df
+    if p_last_n_rows != -1:
+        p_df = p_df[-p_last_n_rows:].copy()
+
+    # Index and validity and gaps
+    ####################################################################
+    p_df = add_minutes_since_2000(p_df, g_close_time_col, g_index_col)  # min since 2000k
+
+    # Detect gaps in the g_index_col column
+    p_df['minute_diff'] = p_df[g_index_col].diff().fillna(1)  # Fill NaN for the first row
+    p_df['gap_flag'] = p_df['minute_diff'] > 1  # True if there's a gap
+    p_df[p_valid_col_name] = True
+    p_df[p_valid_col_name] = p_df['gap_flag'] == False  # valid rows to split the DF into valid chunks
+
+    # Create a cumulative gap identifier to track if a row falls in a gap-affected range
+    # todo here write a gap report
+    # Check for any gaps in the 500-minute rolling window
+    # logger_s.info('compute gap')
+    # p_df['valid_features'] = True
+    # p_df['valid_features'] = p_df['cumulative_gap'].rolling(window=500, min_periods=1).apply(lambda x: len(set(x)) > 1, raw=False)
+    # check the validity of the begin of the df
+
+    selected_utils_columns = [p_valid_col_name]
+    if p_verbose:
+        logger_s.info("Validity and gaps and Index col: %s" % g_index_col)
+        logger_s.info('******')
+
+    p_df = convert_columns_to_float(p_df, [g_volume_col, g_qa_vol_col, g_lqa_vol_col, g_la_vol_col])
+
+    if p_resampling_period != 1:
+        # we resample
+        p_df = resample_ohlcv(p_df, p_resampling_period, p_valid_col_name)
+
+    # scalling and converting cols to 32 to speed up computation
+    ####################################################################
+
+    # first let's scale the open high low close of the df to around 100 in order to use efficiently float 32
+    # establish avg on the 1000 first values
+    # aiming to scale the value around 100
+    average_val = p_df[g_close_col][:1000].mean()
+    factor = max(round(float(average_val / 100.0), 3), 0.001)
+
+    scaling = {
+        "BTC": 30,
+        "SOL": 3,
+        "ETH": 12.69,
+        "ADA": 0.01,
+        "DOT": 0.1,
+        "LINK": 0.1,
+        "BNB": 5
+    }
+
+    if p_scaling_fixed:
+        factor = scaling[p_scaling_ASSET]
+
+    if p_scaling != -1:
+        print('using scaling for ' + p_scaling_ASSET + ' scaling is :' + str(p_scaling))
+        factor = p_scaling
+    p_df['factor_f32'] = factor
+    # factor is the factor used saved into the df it is a float and the same value for the full
+    cols_to_scale = [g_open_col, g_high_col, g_low_col, g_close_col]
+    p_df = scale_dataframe_columns(p_df, cols_to_scale, float(1.0 / factor))
+    f32_cols = [col for col in p_df.columns if col.endswith('_f32')]
+    p_df = convert_df_cols_float_to_float(p_df, f32_cols, '32', True)
+
+    selected_features = []
+    selected_columns = []
+
+    # adjust volume
+    p_df[g_lqa_vol_col] = p_df[g_lqa_vol_col] / factor
+    p_df[g_qa_vol_col] = p_df[g_qa_vol_col] / factor
+
+    # compute mids LR then features
+    ####################################################################
+    # mid
+    p_df[g_mid_col] = (p_df[g_high_col] + p_df[g_low_col]) / 2.0
+    p_df[g_mid2_col] = (p_df[g_open_col] + p_df[g_close_col]) / 2.0
+
+    # LR
+    p_df['F_LR_mid_f16'] = np.log(p_df[g_mid_col] / p_df[g_mid_col].shift(1))
+    p_df['F_LR_close_f16'] = np.log(p_df[g_close_col] / p_df[g_close_col].shift(1))
+    p_df['F_LR_mid2_f16'] = np.log(p_df[g_mid2_col] / p_df[g_mid2_col].shift(1))
+    # range
+    p_df['F_range_f16'] = ((p_df[g_high_col] - p_df[g_low_col]) / p_df[g_mid_col])
+
+    # these cols are returns/range that do not need further scalling and will be converted to f16
+    selected_columns += ['F_LR_close_f16', 'F_LR_mid_f16', 'F_LR_mid2_f16', 'F_range_f16']
+
+    # set the mid reference col to g_mid_col, this mid_col is used everywhere after
+    mid_col = g_mid_col
+
+    ######################################################################
+    # base features are now computed
+    ######################################################################
+
+    # percent R lags
+    if len(p_settings_lags) == 2:
+        p_df, col_names, feature_list = add_hourly_lagged_deltas(p_df, mid_col, n_lags=p_settings_lags[0],
+                                                                 n_minutes=p_settings_lags[1])
+        selected_columns += col_names
+        selected_features += feature_list
+
+    p_df = p_df.copy()  # reset the DF
+
+    epsilon = 0.0001
+
+    logger_s.info('******')
+
+    # RSI
+    periods = p_periods_rsi
+    for i in periods:
+        name = 'F_rsi_' + str(i) + '_' + mid_col + '_f16'
+        feature_obj = features_utils.Feature(
+            feature_id=name,
+            activated=True,
+            feature_type=features_utils.FeatureType.RSI,
+        )
+        selected_features.append(feature_obj)
+        p_df[name] = numba_rsi(p_df[mid_col].to_numpy(), i)
+        selected_columns.append(name)
+
+        # EMAs and delta EMAs
+    p_df, col_names, feature_list = add_emas(p_df, mid_col, p_periods_emas)
+
+    selected_columns += col_names
+    selected_features += feature_list
+
+    # Vols
+    periods = p_periods_vols
+    for i in periods:
+        name = 'F_vol_' + mid_col + '_' + str(i) + '_f16'
+        feature_obj = features_utils.Feature(
+            feature_id=name,
+            activated=True,
+            feature_type=features_utils.FeatureType.HIST_VOLATILITY,
+        )
+        selected_features.append(feature_obj)
+        p_df[name] = rolling_std(p_df[mid_col].to_numpy(), i)
+        selected_columns.append(name)
+
+    # ADI
+    p_df, colname = add_accumulation_distribution_index(p_df)
+    selected_columns.append(colname)
+    feature_obj = features_utils.Feature(
+        feature_id=colname,
+        activated=True,
+        feature_type=features_utils.FeatureType.ADI,
+    )
+    selected_features.append(feature_obj)
+
+    # RITA
+    given_volume = pd.to_numeric(p_df[g_qa_vol_col]) - pd.to_numeric(p_df[g_lqa_vol_col])
+    rita_colname = 'F_RITA_f64'
+    p_df[rita_colname] = (pd.to_numeric(p_df[g_lqa_vol_col]) - given_volume).cumsum()
+    selected_columns.append(rita_colname)
+    feature_obj = features_utils.Feature(
+        feature_id=rita_colname,
+        activated=True,
+        feature_type=features_utils.FeatureType.RITA,
+    )
+    selected_features.append(feature_obj)
+
+    # all vol features
+    if len(p_periods_order_flow) > 0:
+        p_df, selected_columns, selected_features = add_all_orderflow_features(p_df, selected_columns,
+                                                                               selected_features,
+                                                                               p_windows=p_periods_order_flow)
+
+    # TD
+    if p_demark_timeframes is not None:
+        # tweak to avoid breaking the resampling
+        add_minutes_since_2000(p_df, g_close_time_col, g_index_col)  # min since 2000k
+        # Instantiate Td object
+        from python_lib.algo.features.td_sequential import MultiTimeframeTDSequential
+        td_calc = MultiTimeframeTDSequential(timeframes=p_demark_timeframes)
+        p_df, td_columns = td_calc.compute_dataframe(p_df, open_col='S_open_f32', high_col='S_high_f32',
+                                                     low_col='S_low_f32', close_col='S_close_f32',
+                                                     volume_col='S_volume_f64', time_col='S_open_time_i')
+        selected_columns.append(td_columns)
+
+    # todo: add some features
+    # lt randomness test
+    # etf inflows
+    # funding
+    # sentiment
+    # on chain data
+    # pi cycle, zscore....
+
+    # list of float 16 :
+    # casting cols to f16
+    f16_cols = [col for col in p_df.columns if col.endswith('_f16')]
+    p_df = convert_df_cols_float_to_float(p_df, f16_cols, g_precision, True)
+
+    if p_verbose:
+        logger_s.info("Feature columns are generated: %s" % selected_columns)
+        logger_s.info('******')
+
+    # unfragment
+    ####################################################################
+    p_df = p_df.copy()
+
+    # Time
+    ####################################################################
+    p_df[g_close_time_col] = pd.to_datetime(p_df[g_close_time_col])
+    p_df['t_minute_of_day_ui16'] = p_df[g_close_time_col].dt.hour * 60 + p_df[g_close_time_col].dt.minute
+    p_df['t_day_of_week_ui16'] = p_df[g_close_time_col].dt.dayofweek  # 0 = Monday, 6 = Sunday
+    p_df['t_month_of_year_ui16'] = p_df[g_close_time_col].dt.month
+    p_df['t_day_of_month_ui16'] = p_df[g_close_time_col].dt.day
+    selected_seasonality_columns = ['t_minute_of_day_ui16', 't_day_of_week_ui16', 't_month_of_year_ui16',
+                                    't_day_of_month_ui16']
+    for col in selected_seasonality_columns:
+        p_df[col] = p_df[col].astype('uint16')
+    if p_verbose:
+        logger_s.info("Seasonality columns are generated: %s" % selected_seasonality_columns)
+        logger_s.info('******')
+
+    if use_cyclical_encoding:
+        # we replace the seasonality features with cyclical features
+        p_df, selected_seasonality_columns = add_cyclical_time_features(p_df, False)
+
+    # compute predictors ( futurs LogReturns )
+    #################################################################
+    selected_columns_prediction = []
+    p_df[p_valid_col_name] = pd.to_numeric(p_df[p_valid_col_name], errors='coerce').astype(bool)
+    # index_predict = 0
+    for lr_per in p_periods_predict_LR:
+        logger_s.info('computing predictions:' + str(lr_per))
+        (name_min, name_max, name_mid, name_spread) = add_min_max_log_returns(p_df, lr_per, mid_col, p_valid_col_name,
+                                                                              is_log=True)
+        selected_columns_prediction.append(name_min)
+        selected_columns_prediction.append(name_max)
+        selected_columns_prediction.append(name_mid)
+        selected_columns_prediction.append(name_spread)
+        target_rita_colname = f'F_RITA_HRZN_{lr_per}_f64'
+        p_df[target_rita_colname] = p_df[rita_colname].shift(-lr_per) - p_df[rita_colname]
+        selected_columns_prediction.append(target_rita_colname)
+
+    # todo
+    # change of direction
+    # zig zag
+
+    # calculate_perfect_signal_class(p_df: pd.DataFrame, p_upstrong_val: float, p_downstrong_val: float, p_flat_val: float, p_N_periods: int = 60)
+
+    # rename target cols with prefix T_
+    p_df.rename(columns={col: 'T_' + col for col in selected_columns_prediction}, inplace=True)
+    selected_columns_prediction = ['T_' + col for col in selected_columns_prediction]
+
+    logger_s.info("Target columns are generated: %s" % selected_columns_prediction)
+    logger_s.info('******')
+
+    # update validity
+    col_index = p_df.columns.get_loc(p_valid_col_name)
+    if len(p_periods_predict_LR) > 0:
+        p_df.iloc[-p_periods_predict_LR[
+            -1]:, col_index] = False  # last few values are not valid as we cannot compute the predictors
+
+    # casting cols
+    #####################################
+    # recasting cols to f16
+    f16_cols = [col for col in p_df.columns if col.endswith('_f16')]
+    p_df = convert_df_cols_float_to_float(p_df, f16_cols, g_precision, True)
+    # recasting cols to f32
+    f32_cols = [col for col in p_df.columns if col.endswith('_f32')]
+    p_df = convert_df_cols_float_to_float(p_df, f32_cols, '32', True)
+    # todo clean the memory of non used cols
+
+    logger_s.info('DONE build_singularity_df')
+    logger_s.info('******')
+
+    return p_df, selected_columns + selected_seasonality_columns + selected_utils_columns, selected_columns_prediction, selected_features
+
+
+def get_cached_filename_data(ID, p_coin, p_first_parquet=-1, p_last_parquet=0, p_prefix=''):
+    filename = p_prefix + ID + '_data_' + p_coin + '_s' + str(p_first_parquet) + '_e' + str(p_last_parquet) + '.parquet'
+    return filename
+
+
+<<<<<<< HEAD
+def load_compute_cache_features(ID, p_coin, p_folder, p_folder_cache, p_first_parquet= -1, p_last_parquet = 0, p_prefix = '', p_force = True, p_periods_rsi = [], p_periods_emas = [], p_periods_vols = [], p_settings_lags = (), 
+                p_periods_order_flow = [],
+                p_resampling_period = 1,
+                p_scaling = -1,
+                p_last_n_rows = -1,
+                p_live = False,
+                p_live_dict = {},
+                p_scaling_fixed = False,
+                p_scaling_ASSET = '',
+                p_no_live_save = True,
+                p_pair_id =''):
+    
+    
+    filename = p_folder_cache + get_cached_filename_features( ID, p_coin, p_first_parquet, p_last_parquet, p_prefix)
+    if not p_live :
+=======
+def get_cached_filename_features(ID, p_coin, p_first_parquet=-1, p_last_parquet=0, p_prefix=''):
+    filename = p_prefix + ID + '_features_' + p_coin + '_s' + str(p_first_parquet) + '_e' + str(
+        p_last_parquet) + '.parquet'
+    return filename
+
+
+def get_cached_filename_targets(ID, p_coin, p_first_parquet=-1, p_last_parquet=0, p_prefix=''):
+    filename = p_prefix + ID + '_targets_' + p_coin + '_s' + str(p_first_parquet) + '_e' + str(
+        p_last_parquet) + '.parquet'
+    return filename
+
+
+def get_cached_filename_merged_features(ID, p_coins, p_first_parquet=-1, p_last_parquet=0, p_prefix=''):
+    filename = p_prefix + ID + '_merged_features_' + p_coins + '_s' + str(p_first_parquet) + '_e' + str(
+        p_last_parquet) + '.parquet'
+    return filename
+
+
+def get_cached_filename_merged_target_features(ID, p_assets, p_target_asset, p_first_parquet=-1, p_last_parquet=0,
+                                               p_prefix=''):
+    filename = p_prefix + ID + '_merged_target_features_' + p_assets + p_target_asset + '_s' + str(
+        p_first_parquet) + '_e' + str(p_last_parquet) + '.parquet'
+    return filename
+
+
+def load_compute_cache_features(ID, p_coin, p_folder, p_folder_cache, p_first_parquet=-1, p_last_parquet=0, p_prefix='',
+                                p_force=True, p_periods_rsi=[], p_periods_emas=[], p_periods_vols=[],
+                                p_settings_lags=(),
+                                p_periods_order_flow=[],
+                                p_resampling_period=1,
+                                p_scaling=-1,
+                                p_last_n_rows=-1,
+                                p_live=False,
+                                p_live_dict={},
+                                p_scaling_fixed=False,
+                                p_scaling_ASSET='',
+                                p_no_live_save=True):
+    filename = p_folder_cache + get_cached_filename_features(ID, p_coin, p_first_parquet, p_last_parquet, p_prefix)
+    if not p_live:
+>>>>>>> 03ce277f6793de35b42bf01226acfaeb5f4b84b6
+        if os.path.exists(filename) and not p_force:
+            logger_s.info('found file, loaded : ' + filename)
+            return read_parquet_to_f16(filename)
+<<<<<<< HEAD
+        else :
+            pair_coin = p_coin
+            if p_pair_id != '' :
+                pair_coin = p_pair_id
+            load_df = load_concat_clean_data_for_coin(pair_coin, p_folder, p_first_parquet, p_last_parquet)
+    else :
+=======
+        else:
+            load_df = load_concat_clean_data_for_coin(p_coin, p_folder, p_first_parquet, p_last_parquet)
+    else:
+>>>>>>> 03ce277f6793de35b42bf01226acfaeb5f4b84b6
+        # no need to download or load the data should be in the dictionary passed in parameter
+        load_df = p_live_dict[p_coin]
+    # generate features and targets
+    full_df, Xcols, Ycols, selected_features = build_singularity_df(load_df, p_periods_rsi=p_periods_rsi,
+                                                                    p_periods_emas=p_periods_emas,
+                                                                    p_periods_vols=p_periods_vols,
+                                                                    p_settings_lags=p_settings_lags,
+                                                                    p_periods_order_flow=p_periods_order_flow,
+                                                                    p_resampling_period=p_resampling_period,
+                                                                    p_periods_predict_LR=[],
+                                                                    p_scaling=p_scaling,
+                                                                    p_scaling_fixed=p_scaling_fixed,
+                                                                    p_scaling_ASSET=p_scaling_ASSET,
+                                                                    p_last_n_rows=p_last_n_rows)
+
+    if p_no_live_save and p_live:
+        logger_s.info('live mode not saved to : ' + filename)
+    else:
+        full_df.to_parquet(filename)
+        features_utils.Feature.to_csv(selected_features, filename + '_features')
+        logger_s.info('saved to : ' + filename)
+        logger_s.info('saved to : ' + filename + '_features')
+
+    return full_df, selected_features
+
+<<<<<<< HEAD
+def load_compute_cache_targets(ID, p_coin, p_folder, p_folder_cache, p_first_parquet = -1, p_last_parquet = 0, p_prefix = '', p_force= True, p_targets = [],
+                                p_resampling_period = 1,
+                                p_scaling = -1, p_last_n_rows = -1,
+                                p_live = False,
+                                p_live_dict = {},
+                                p_cache = True,
+                                p_pair_id=''):
+=======
+>>>>>>> 03ce277f6793de35b42bf01226acfaeb5f4b84b6
+
+def load_compute_cache_targets(ID, p_coin, p_folder, p_folder_cache, p_first_parquet=-1, p_last_parquet=0, p_prefix='',
+                               p_force=True, p_targets=[],
+                               p_resampling_period=1,
+                               p_scaling=-1, p_last_n_rows=-1,
+                               p_live=False,
+                               p_live_dict={},
+                               p_cache=True):
+    filename = p_folder_cache + get_cached_filename_targets(ID, p_coin, p_first_parquet, p_last_parquet, p_prefix)
+
+    if not p_live:
+        if os.path.exists(filename) and not p_force:
+            logger_s.info('found file, loaded : ' + filename)
+            return read_parquet_to_f16(filename)
+        else:
+            # load data and check chart
+<<<<<<< HEAD
+            pair_coin = p_coin
+            if p_pair_id != '' :
+                pair_coin = p_pair_id
+            load_df = load_concat_clean_data_for_coin(pair_coin, p_folder, p_first_parquet, p_last_parquet)
+    else :
+=======
+            load_df = load_concat_clean_data_for_coin(p_coin, p_folder, p_first_parquet, p_last_parquet)
+    else:
+>>>>>>> 03ce277f6793de35b42bf01226acfaeb5f4b84b6
+        # no need to download or load the data should be in the dictionary passed in parameter
+        load_df = p_live_dict[p_coin]
+    # generate features and targets
+    full_df, Xcols, Ycols, selected_features = build_singularity_df(load_df, p_periods_rsi=[], p_periods_emas=[],
+                                                                    p_periods_vols=[], p_settings_lags=(),
+                                                                    p_periods_order_flow=[],
+                                                                    p_periods_predict_LR=p_targets,
+                                                                    p_resampling_period=p_resampling_period,
+                                                                    p_scaling=p_scaling, p_last_n_rows=p_last_n_rows)
+
+    if p_cache:
+        full_df.to_parquet(filename)
+        logger_s.info('saved to : ' + filename)
+    return full_df

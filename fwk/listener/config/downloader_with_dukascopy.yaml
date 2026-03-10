@@ -1,0 +1,32 @@
+downloader:
+  base_folder: "/data/candles/"
+  nb_days_to_download: 365
+  exchanges:
+    - name: "binance"
+      connector: "ccxt-rest"
+      market_type: "spot"
+      symbols:
+        - "BTCUSDT"
+        - "ETHUSDT"
+      start_date: "2024-01-01"
+    
+    - name: "dukascopy"
+      connector: "dukascopy-rest"
+      market_type: "forex"
+      symbols:
+        - "EURUSD"
+        - "GBPUSD"
+        - "USDJPY"
+      start_date: "2024-01-01"
+
+# Sleep/wake configuration
+sleep_settings:
+  enable_sleep_mode: false  # Set to true to enable sleep/wake functionality
+  wake_minute_past_hour: 15  # Wake up at 15 minutes past each hour
+  priority_new_symbols: true  # New symbols take priority over daily updates
+
+# Priority configuration for different task types
+priority_config:
+  new_symbol_priority: 0      # Highest priority (new symbols)
+  daily_update_priority: 1    # Medium priority (daily updates)
+  gap_fill_priority: 2        # Lowest priority (gap filling)

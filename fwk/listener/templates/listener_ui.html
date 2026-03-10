@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Listener Dashboard - {{ listener_id }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .symbol-card {
+            transition: all 0.3s ease;
+        }
+        .symbol-card:hover {
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        .positive {
+            color: #28a745;
+        }
+        .negative {
+            color: #dc3545;
+        }
+        .last-updated {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #28a745;
+        }
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        .symbols-list {
+            line-height: 2;
+        }
+        .config-section {
+            border-left: 4px solid #0d6efd;
+            padding-left: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="display-6">
+                <i class="bi bi-graph-up"></i> Crypto Listener Dashboard
+                <span class="badge bg-secondary">{{ listener_id }}</span>
+            </h1>
+            <div>
+                <span id="connection-status" class="badge bg-danger">
+                    <span class="status-indicator status-inactive"></span> Disconnected
+                </span>
+                <span id="last-updated" class="ms-2 last-updated">Never updated</span>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-gear"></i> Listener Configuration
+                        </h5>
+                        <div class="row" id="config-container">
+                            <div class="col-md-6 mb-3">
+                                <h6 class="text-muted">Connector Information</h6>
+                                <div class="mb-2">
+                                    <strong>Listener ID:</strong> <span id="listener-id-config">Loading...</span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Connector Type:</strong> <span id="connector-type-config">Loading...</span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Connector Capacity:</strong> <span id="connector-capacity-config">Loading...</span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Selected Data Types:</strong> 
+                                    <span id="selected-data-types">Loading...</span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Status:</strong> 
+                                    <span id="listener-status-config" class="badge bg-secondary">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <h6 class="text-muted">Exchange & Symbol Configuration</h6>
+                                <div id="exchanges-config">
+                                    Loading exchange information...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">System Status</h5>
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <p class="mb-1">Active Symbols</p>
+                                <h3 id="active-symbols">0</h3>
+                            </div>
+                            <div>
+                                <p class="mb-1">Last Update</p>
+                                <h3 id="update-time">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Redis Status</h5>
+                        <p class="mb-1">Connection</p>
+                        <h3 id="redis-status">Unknown</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Refresh Controls</h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <p class="mb-1">Refresh Interval</p>
+                                <div class="input-group">
+                                    <input type="number" id="refresh-interval" class="form-control" value="5" min="1">
+                                    <span class="input-group-text">seconds</span>
+                                </div>
+                            </div>
+                            <button id="refresh-btn" class="btn btn-primary">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" id="symbols-container">
+            <!-- Symbols will be dynamically inserted here -->
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading symbol data...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

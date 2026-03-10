@@ -1,0 +1,33 @@
+services:
+  redis_prod:
+    image: redis:7-alpine
+    env_file:
+      - .env
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+    volumes:
+      - ./docker_data/redis:/data
+    restart: unless-stopped
+    command: >
+      sh -c "redis-server
+      --bind 0.0.0.0
+      --protected-mode yes
+      --port  ${REDIS_PORT}
+      --requirepass \"$REDIS_PASS\""
+    healthcheck:
+      test: ["CMD", "sh", "-c", "redis-cli -a $$REDIS_PASS ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 5g
+    networks:
+      - net_redis_prod
+
+networks:
+  net_redis_prod:
+    name: net_redis_prod
+    driver: bridge
+

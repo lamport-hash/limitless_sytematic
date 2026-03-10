@@ -1,0 +1,17 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+
+# Create directories for static files and templates
+RUN mkdir -p /app/static/js /app/templates
+RUN mkdir -p /app/config
+
+COPY ./app ./app
+COPY ./static /app/static
+COPY ./templates /app/templates
+
+CMD ["uvicorn", "app.listener_app:app", "--host", "0.0.0.0", "--port", "8000"]

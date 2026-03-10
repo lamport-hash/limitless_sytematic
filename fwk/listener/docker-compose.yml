@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  screener:
+    build:
+      context: .
+      dockerfile: dockerfile_screener
+    container_name: candle_screener
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./config:/app/config:ro
+      - ./docker_data/data/candles:/data/candles:ro
+      - ./app/static:/app/app/static:ro
+      - ../py_core:/app/py_core:ro
+    environment:
+      - CONFIG_PATH=/app/config/downloader.yaml
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/app/py_core
+    restart: unless-stopped
+    networks:
+      - candle_network
+
+  listener_api:
+    build:
+      context: .
+      dockerfile: dockerfile_api
+    container_name: listener_api
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./config:/app/config
+      - ./app/static:/app/app/static
+      - ./templates:/app/templates
+      - ../py_core:/app/py_core:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/app/py_core
+    restart: unless-stopped
+    networks:
+      - candle_network
+
+  listener_list:
+    build:
+      context: .
+      dockerfile: dockerfile_list
+    container_name: listener_list
+    ports:
+      - "8006:8000"
+    volumes:
+      - ./config:/app/config
+      - ./app/static:/app/app/static
+      - ./templates:/app/templates
+      - ../py_core:/app/py_core:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/app/py_core
+    restart: unless-stopped
+    networks:
+      - candle_network
+
+  downloader:
+    build:
+      context: .
+      dockerfile: dockerfile_downloader
+    container_name: candle_downloader
+    volumes:
+      - ./config:/app/config:ro
+      - ./docker_data/data/candles:/data/candles:rw
+      - ../py_core:/app/py_core:ro
+    environment:
+      - CONFIG_PATH=/app/config/downloader.yaml
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/app/py_core
+    restart: unless-stopped
+    networks:
+      - candle_network
+
+networks:
+  candle_network:
+    external: true

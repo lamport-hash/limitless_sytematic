@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataFrame Visualiser</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .control-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .control-group label {
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        select, input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 500px;
+        }
+        .files-list {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .files-list h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .file-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        .file-name {
+            font-weight: 600;
+            color: #333;
+        }
+        .file-info {
+            color: #777;
+            font-size: 12px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #777;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .columns-info {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .columns-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .column-item {
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .column-type {
+            color: #777;
+            font-size: 11px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DataFrame Visualiser</h1>
+        
+        <div class="controls">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="fileSelect">Select DataFrame</label>
+                    <select id="fileSelect">
+                        <option value="">Loading files...</option>
+                    </select>
+                </div>
+                <button id="loadColumnsBtn" disabled>Load Columns</button>
+            </div>
+        </div>
+
+        <div id="columnsSection" class="columns-info hidden">
+            <h2>Available Columns</h2>
+            <div id="columnsGrid" class="columns-grid"></div>
+        </div>
+
+        <div id="chartSection" class="controls hidden">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="col1">Column 1</label>
+                    <select id="col1">
+                        <option value="">Select column...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="col2">Column 2 (optional)</label>
+                    <select id="col2">
+                        <option value="">Select column...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="col3">Column 3 (optional)</label>
+                    <select id="col3">
+                        <option value="">Select column...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="limitInput">Data Points Limit</label>
+                    <input type="number" id="limitInput" placeholder="Leave empty for all" min="1">
+                </div>
+                <button id="chartBtn" disabled>Update Chart</button>
+            </div>
+        </div>
+
+        <div id="chartContainer" class="chart-container hidden">
+            <div class="chart-wrapper">
+                <canvas id="chart"></canvas>
+            </div>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+    </div>
+
+    <script>
+        let chart = null;
+        let currentColumns = [];
+
+        const fileSelect = document.getElementById('fileSelect');
+        const loadColumnsBtn = document.getElementById('loadColumnsBtn');
+        const columnsSection = document.getElementById('columnsSection');
+        const columnsGrid = document.getElementById('columnsGrid');
+        const chartSection = document.getElementById('chartSection');
+        const col1Select = document.getElementById('col1');
+        const col2Select = document.getElementById('col2');
+        const col3Select = document.getElementById('col3');
+        const limitInput = document.getElementById('limitInput');
+        const chartBtn = document.getElementById('chartBtn');
+        const chartContainer = document.getElementById('chartContainer');
+        const errorDiv = document.getElementById('error');
+
+        async function loadFiles() {
+            try {
+                const response = await fetch('/api/files');
+                if (!response.ok) throw new Error('Failed to load files');
+                const files = await response.json();
+                
+                fileSelect.innerHTML = '<option value="">Select a file...</option>';
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file.path;
+                    const rowInfo = file.num_rows ? `${file.num_rows} rows` : '';
+                    option.textContent = `${file.filename} (${rowInfo})`;
+                    fileSelect.appendChild(option);
+                });
+                
+                loadColumnsBtn.disabled = false;
+            } catch (err) {
+                showError('Failed to load files: ' + err.message);
+            }
+        }
+
+        async function loadColumns() {
+            const filename = fileSelect.value;
+            if (!filename) return;
+
+            try {
+                const response = await fetch(`/api/columns/${encodeURIComponent(filename)}`);
+                if (!response.ok) throw new Error('Failed to load columns');
+                const data = await response.json();
+                
+                currentColumns = data.columns;
+                
+                columnsGrid.innerHTML = data.columns.map(col => `
+                    <div class="column-item">
+                        <div>${col}</div>
+                        <div class="column-type">${data.column_types[col] || 'unknown'}</div>
+                    </div>
+                `).join('');
+                
+                columnsSection.classList.remove('hidden');
+                chartSection.classList.remove('hidden');
+                
+                const numericCols = data.columns.filter(col => 
+                    !data.column_types[col]?.includes('object')
+                );
+                
+                [col1Select, col2Select, col3Select].forEach(select => {
+                    select.innerHTML = '<option value="">Select column...</option>';
+                    numericCols.forEach(col => {
+                        const option = document.createElement('option');
+                        option.value = col;
+                        option.textContent = col;
+                        select.appendChild(option);
+                    });
+                });
+                
+                if (numericCols.length > 0) {
+                    col1Select.value = numericCols[0];
+                    chartBtn.disabled = false;
+                }
+                
+            } catch (err) {
+                showError('Failed to load columns: ' + err.message);
+            }
+        }
+
+        async function updateChart() {
+            const filename = fileSelect.value;
+            const col1 = col1Select.value;
+            const col2 = col2Select.value;
+            const col3 = col3Select.value;
+            const limit = limitInput.value ? parseInt(limitInput.value) : undefined;
+
+            if (!filename || !col1) {
+                showError('Please select at least one column');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams();
+                params.append('col1', col1);
+                if (col2) params.append('col2', col2);
+                if (col3) params.append('col3', col3);
+                if (limit) params.append('limit', limit);
+
+                const response = await fetch(`/api/chart/${encodeURIComponent(filename)}?${params}`);
+                if (!response.ok) throw new Error('Failed to load chart data');
+                const data = await response.json();
+
+                renderChart(data.datasets);
+                chartContainer.classList.remove('hidden');
+                hideError();
+
+            } catch (err) {
+                showError('Failed to load chart: ' + err.message);
+            }
+        }
+
+        function renderChart(datasets) {
+            const colors = ['#007bff', '#28a745', '#dc3545'];
+            
+            const chartData = {
+                labels: datasets[0].x,
+                datasets: datasets.map((ds, i) => ({
+                    label: ds.column,
+                    data: ds.y,
+                    borderColor: colors[i % colors.length],
+                    backgroundColor: colors[i % colors.length] + '20',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    fill: false
+                }))
+            };
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            const ctx = document.getElementById('chart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: `Comparing: ${datasets.map(ds => ds.column).join(' vs ')}`
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Index'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Value'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showError(msg) {
+            errorDiv.textContent = msg;
+            errorDiv.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorDiv.classList.add('hidden');
+        }
+
+        loadFiles();
+
+        loadColumnsBtn.addEventListener('click', loadColumns);
+        chartBtn.addEventListener('click', updateChart);
+        
+        fileSelect.addEventListener('change', () => {
+            columnsSection.classList.add('hidden');
+            chartSection.classList.add('hidden');
+            chartContainer.classList.add('hidden');
+            if (chart) {
+                chart.destroy();
+                chart = null;
+            }
+        });
+
+        [col1Select, col2Select, col3Select].forEach(select => {
+            select.addEventListener('change', () => {
+                chartContainer.classList.add('hidden');
+            });
+        });
+    </script>
+</body>
+</html>
