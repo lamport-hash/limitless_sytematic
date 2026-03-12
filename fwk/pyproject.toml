@@ -19,6 +19,11 @@ dependencies = [
     "joblib",
     "scikit-learn",
     "torch",
+    "matplotlib",
+    "numba",
+    "pandas-ta",
+    "backtesting",
+    "yfinance",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +42,7 @@ dev-dependencies = [
     "black>=24.0",
     "ruff>=0.4",
     "mypy>=1.0",
+    "matplotlib>=3.10.8",
 ]
 
 [tool.setuptools.packages.find]

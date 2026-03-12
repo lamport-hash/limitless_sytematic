@@ -1,8 +1,9 @@
 
 **/data/
 **/data_work/
+**/output/
+**/work/
 
-*.md
 
 # ---> Python
 
@@ -180,4 +181,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# data + pictures
+*.gif
+*.png
+*.jpeg
+*.jpg
+*.csv
+*.parquet
 

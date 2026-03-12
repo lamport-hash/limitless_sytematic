@@ -33,7 +33,7 @@ from enum import Enum
 from core.enums import MktDataFred, ExchangeNAME
 
 
-DATA_DIR = Path("/home/brian/sing/data")
+DATA_DIR = Path(__file__).parent.parent / "data"
 IMPORT_DIR = DATA_DIR / "import"
 NORMALISED_DIR = DATA_DIR / "normalised"
 BUNDLE_DIR = DATA_DIR / "bundle"
@@ -42,6 +42,7 @@ WORK_DIR = DATA_DIR / "work"
 
 class ProductType(Enum):
     """Product type for normalized data."""
+
     FUTURE = "future"
     SPOT = "spot"
     OPTION = "option"
@@ -63,10 +64,7 @@ def get_normalised_dir() -> Path:
     return NORMALISED_DIR
 
 
-def get_import_source_dir(
-    p_source: ExchangeNAME,
-    p_subtype: str = ""
-) -> Path:
+def get_import_source_dir(p_source: ExchangeNAME, p_subtype: str = "") -> Path:
     """
     Get the import directory for a specific source.
 
@@ -91,10 +89,7 @@ def get_import_source_dir(
 
 
 def get_import_file(
-    p_source: ExchangeNAME,
-    p_symbol: str,
-    p_subtype: str = "",
-    p_extension: str = "txt"
+    p_source: ExchangeNAME, p_symbol: str, p_subtype: str = "", p_extension: str = "txt"
 ) -> Path:
     """
     Get the full path to an import file.
@@ -174,7 +169,11 @@ def get_normalised_source_dir(
     data_freq_dir = get_normalised_data_freq_dir(p_data_freq)
 
     source_name = p_source.value if isinstance(p_source, ExchangeNAME) else p_source
-    exchange_name = (p_exchange.value if isinstance(p_exchange, ExchangeNAME) else p_exchange) if p_exchange else "undefined"
+    exchange_name = (
+        (p_exchange.value if isinstance(p_exchange, ExchangeNAME) else p_exchange)
+        if p_exchange
+        else "undefined"
+    )
 
     return data_freq_dir / f"{source_name}_{exchange_name}"
 
@@ -266,7 +265,9 @@ def get_normalised_file(
         >>> get_normalised_file(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA", "20200101", "20201231")
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/AAA/AAA_20200101_20201231_candle_1hour.df.parquet')
     """
-    instrument_dir = get_normalised_instrument_dir(p_data_freq, p_source, p_product_type, p_instrument, p_exchange)
+    instrument_dir = get_normalised_instrument_dir(
+        p_data_freq, p_source, p_product_type, p_instrument, p_exchange
+    )
 
     start_str = p_start if p_start else "*"
     end_str = p_end if p_end else "*"
@@ -336,6 +337,8 @@ def create_normalised_dirs(
         >>> create_normalised_dirs(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/AAA')
     """
-    instrument_dir = get_normalised_instrument_dir(p_data_freq, p_source, p_product_type, p_instrument, p_exchange)
+    instrument_dir = get_normalised_instrument_dir(
+        p_data_freq, p_source, p_product_type, p_instrument, p_exchange
+    )
     instrument_dir.mkdir(parents=True, exist_ok=True)
     return instrument_dir

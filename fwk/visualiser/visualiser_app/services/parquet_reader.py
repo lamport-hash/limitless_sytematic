@@ -1,43 +1,39 @@
-import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
-BUNDLE_DIR = Path(os.environ.get("BUNDLE_DIR", "/home/brian/sing/data/bundle"))
+from visualiser_app.utils.enums import BUNDLE_DIR, g_index_col
 
 
 class ParquetReader:
-    def __init__(self, bundle_dir: Path = BUNDLE_DIR):
-        self.bundle_dir = Path(bundle_dir)
+    def __init__(self, bundle_dir: Optional[Path] = None):
+        self.bundle_dir = Path(bundle_dir) if bundle_dir else BUNDLE_DIR
         if not self.bundle_dir.exists():
             raise ValueError(f"Bundle directory does not exist: {self.bundle_dir}")
 
     def list_bundle_files(self) -> List[Dict[str, Any]]:
         files = []
-        for root, _, filenames in os.walk(self.bundle_dir):
-            for filename in filenames:
-                if filename.endswith(".parquet"):
-                    filepath = Path(root) / filename
-                    rel_path = filepath.relative_to(self.bundle_dir)
-                    try:
-                        parquet_file = pq.ParquetFile(filepath)
-                        metadata = parquet_file.metadata
-                        files.append({
-                            "filename": filename,
-                            "path": str(rel_path),
-                            "full_path": str(filepath),
-                            "num_rows": metadata.num_rows,
-                            "num_columns": metadata.num_columns,
-                            "num_row_groups": metadata.num_row_groups,
-                        })
-                    except Exception as e:
-                        files.append({
-                            "filename": filename,
-                            "path": str(rel_path),
-                            "full_path": str(filepath),
-                            "error": str(e),
-                        })
+        for filepath in self.bundle_dir.rglob("*.parquet"):
+            rel_path = filepath.relative_to(self.bundle_dir)
+            try:
+                parquet_file = pq.ParquetFile(filepath)
+                metadata = parquet_file.metadata
+                files.append({
+                    "filename": filepath.name,
+                    "path": str(rel_path),
+                    "full_path": str(filepath),
+                    "num_rows": metadata.num_rows,
+                    "num_columns": metadata.num_columns,
+                    "num_row_groups": metadata.num_row_groups,
+                })
+            except Exception as e:
+                files.append({
+                    "filename": filepath.name,
+                    "path": str(rel_path),
+                    "full_path": str(filepath),
+                    "error": str(e),
+                })
         return files
 
     def get_columns(self, filename: str) -> List[str]:
@@ -92,7 +88,7 @@ class ParquetReader:
             df = df.tail(limit)
 
         index_col = None
-        for col in ["i_minute_i", "index", "date", "datetime", "timestamp"]:
+        for col in [g_index_col, "index", "date", "datetime", "timestamp"]:
             if col in df.columns:
                 index_col = col
                 break

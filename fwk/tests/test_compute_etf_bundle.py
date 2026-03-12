@@ -7,7 +7,7 @@ Tests building features for ETFs and merging them into a bundle using the fwk mo
 import pytest
 import pandas as pd
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
@@ -21,13 +21,12 @@ from core.data_org import (
 )
 from core.enums import g_index_col
 from norm.norm_utils import load_normalized_df
+from strat.strat_backtest import ETF_LIST
 
 
 DATA_FREQ = MktDataFred.CANDLE_1HOUR
 SOURCE = ExchangeNAME.FIRSTRATE
 PRODUCT_TYPE = ProductType.ETF
-
-TEST_ETFS = ["QQQ"]
 
 FEATURE_TYPES = [
     FeatureType.PRICE,
@@ -55,9 +54,7 @@ def compute_features_for_etf(etf_symbol: str) -> Path:
     Returns:
         Path to the saved feature parquet file
     """
-    instrument_dir = get_normalised_instrument_dir(
-        DATA_FREQ, SOURCE, PRODUCT_TYPE, etf_symbol
-    )
+    instrument_dir = get_normalised_instrument_dir(DATA_FREQ, SOURCE, PRODUCT_TYPE, etf_symbol)
 
     parquet_files = list(instrument_dir.glob("*.df.parquet"))
     if not parquet_files:
@@ -97,7 +94,7 @@ def compute_features_for_etf(etf_symbol: str) -> Path:
 
 
 def compute_etf_bundle(
-    etf_list: List[str],
+    etf_list: Optional[List[str]] = None,
     output_prefix: str = "test_etf",
     output_dir: Path = BUNDLE_DIR,
 ) -> Path:
@@ -105,13 +102,15 @@ def compute_etf_bundle(
     Compute features for multiple ETFs and merge into a single bundle.
 
     Args:
-        etf_list: List of ETF symbols to process
+        etf_list: List of ETF symbols to process (defaults to ETF_LIST from strat.dual_momentum)
         output_prefix: Prefix for output filename
         output_dir: Output directory (defaults to BUNDLE_DIR)
 
     Returns:
         Path to the merged bundle file
     """
+    if etf_list is None:
+        etf_list = ETF_LIST
     if output_dir is None:
         output_dir = BUNDLE_DIR
 
@@ -119,15 +118,15 @@ def compute_etf_bundle(
 
     feature_files = []
     for etf in etf_list:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Processing: {etf}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         feature_file = compute_features_for_etf(etf)
         feature_files.append(feature_file)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Merging ETF feature files...")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     merged_df = merge_multiple_dataframes_from_parquet(
         file_paths=[str(f) for f in feature_files],
@@ -147,10 +146,10 @@ def compute_etf_bundle(
     merged_df.to_parquet(output_path)
 
     file_size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Bundle saved to: {output_path}")
     print(f"File size: {file_size_mb:.2f} MB")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     return output_path
 
@@ -161,9 +160,9 @@ def test_compute_features_for_single_etf():
     """
     output_file = compute_features_for_etf("QQQ")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Output file: {output_file}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     assert output_file.exists(), f"Output file should exist: {output_file}"
 
@@ -172,48 +171,47 @@ def test_compute_features_for_single_etf():
     print(f"Columns: {df.columns.tolist()[:10]}...")
 
     assert df.shape[0] > 0, "DataFrame should have rows"
-    
+
     feature_cols = [c for c in df.columns if c.startswith("F_")]
     assert len(feature_cols) > 0, "Should have feature columns"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("TEST PASSED: Single ETF feature computation")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def test_compute_etf_bundle_small():
     """
-    Test computing and merging features for a small set of ETFs.
+    Test computing and merging features for ETFs from ETF_LIST.
     """
     output_file = compute_etf_bundle(
-        etf_list=TEST_ETFS,
         output_prefix="test_etf",
         output_dir=BUNDLE_DIR,
     )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Bundle file: {output_file}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     assert output_file.exists(), f"Bundle file should exist: {output_file}"
 
     df = pd.read_parquet(output_file)
     print(f"Shape: {df.shape}")
     print(f"Index: {df.index.name}")
-    
+
     feature_cols = [c for c in df.columns if "_F_" in c]
     print(f"Feature columns: {len(feature_cols)}")
 
     assert df.shape[0] > 0, "DataFrame should have rows"
     assert len(feature_cols) > 0, "Should have feature columns"
 
-    for etf in TEST_ETFS:
+    for etf in ETF_LIST:
         etf_feature_cols = [c for c in feature_cols if c.startswith(f"{etf}_")]
         assert len(etf_feature_cols) > 0, f"Should have features for {etf}"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("TEST PASSED: ETF bundle computation")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def test_feature_types_list():

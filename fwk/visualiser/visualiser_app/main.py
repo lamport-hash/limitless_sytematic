@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from visualiser_app.routes import data, chart
+from visualiser_app.utils.enums import BUNDLE_DIR
 
 app = FastAPI(
     title="DataFrame Visualiser",
@@ -21,8 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-bundle_dir = os.environ.get("BUNDLE_DIR", "/home/brian/sing/data/bundle")
-app.state.bundle_dir = bundle_dir
+app.state.bundle_dir = str(BUNDLE_DIR)
 
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
@@ -40,7 +39,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "bundle_dir": bundle_dir}
+    return {"status": "healthy", "bundle_dir": str(BUNDLE_DIR)}
 
 
 if __name__ == "__main__":

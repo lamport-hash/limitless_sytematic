@@ -1,4 +1,6 @@
-"""Backtest modules for strategy performance evaluation."""
+"""
+Backtest module for running strategy backtests.
+"""
 
 from backtest.dual_momentum_backtest import (
     Order,
@@ -6,8 +8,7 @@ from backtest.dual_momentum_backtest import (
     OHLC_COLS,
     generate_orders_from_allocations,
     compute_strategy_performance,
-    compute_period_returns,
-    print_metrics,
+    save_backtest_diagnostics,
 )
 
 __all__ = [
@@ -16,6 +17,5 @@ __all__ = [
     "OHLC_COLS",
     "generate_orders_from_allocations",
     "compute_strategy_performance",
-    "compute_period_returns",
-    "print_metrics",
+    "save_backtest_diagnostics",
 ]

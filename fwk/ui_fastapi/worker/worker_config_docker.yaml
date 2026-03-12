@@ -1,0 +1,16 @@
+worker:
+  name: worker-docker-1
+  label: Docker Worker 1
+  comment: Default worker instance
+  port: 8890
+  host: 0.0.0.0
+  max_concurrent_jobs: 2
+
+manager:
+  url: http://manager:8888
+  api_key: worker-key-001
+  heartbeat_interval: 15
+  poll_interval: 3
+
+paths:
+  output_dir: ./data/output

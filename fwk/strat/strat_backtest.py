@@ -1,5 +1,5 @@
 """
-Dual Momentum Strategy for ETF Basket.
+Dual Momentum Strategy Backtester.
 
 Implements the classic dual momentum approach:
 1. Absolute momentum: ROC > threshold (positive momentum)
@@ -7,11 +7,8 @@ Implements the classic dual momentum approach:
 3. If no ETF has positive momentum -> allocate to default ETF (safe haven)
 """
 
-from typing import List
-
 import numpy as np
 import pandas as pd
-
 
 ETF_LIST = ["QQQ", "SPY", "TLT", "GLD", "VWO"]
 
@@ -113,23 +110,49 @@ def get_current_allocation(p_df: pd.DataFrame) -> dict:
     return allocations
 
 
-def print_allocation_summary(p_df: pd.DataFrame, p_n_last: int = 10):
-    """Print summary of recent allocations."""
-    print(f"\n{'=' * 60}")
-    print("Recent Allocations (last {} periods)".format(p_n_last))
-    print(f"{'=' * 60}")
+def create_test_bundle_with_allocations(p_n_rows: int = 100) -> pd.DataFrame:
+    """
+    Create a test bundle with all required columns for backtesting.
+    Generates synthetic data and computes allocations.
+    """
+    np.random.seed(42)
+    data = {}
 
-    alloc_cols = [f"A_{etf}_alloc" for etf in ETF_LIST]
-    recent = p_df[alloc_cols + ["A_top_etf", "A_n_positive_momentum"]].tail(p_n_last)
+    for etf in ETF_LIST:
+        data[f"{etf}_F_roc_4800_F_mid_f32_f16"] = np.random.randn(p_n_rows) * 0.1
+        close_prices = 100 + np.cumsum(np.random.randn(p_n_rows) * 0.5)
+        data[f"{etf}_S_close_f32"] = close_prices
+        data[f"{etf}_S_open_f32"] = close_prices * (1 + np.random.randn(p_n_rows) * 0.01)
+        data[f"{etf}_S_high_f32"] = close_prices * (1 + abs(np.random.randn(p_n_rows)) * 0.01)
+        data[f"{etf}_S_low_f32"] = close_prices * (1 - abs(np.random.randn(p_n_rows)) * 0.01)
+        data[f"{etf}_S_volume_f64"] = np.random.randint(1000, 10000, p_n_rows).astype(float)
 
-    for idx, row in recent.iterrows():
-        alloc_str = ", ".join(
-            [
-                f"{ETF_LIST[i]}:{row[col]:.2f}"
-                for i, col in enumerate(alloc_cols)
-                if row[col] > 0
-            ]
-        )
-        print(
-            f"  {idx}: {alloc_str} | top: {row['A_top_etf']} | +mom: {row['A_n_positive_momentum']}"
-        )
+    df = pd.DataFrame(data)
+
+    df = compute_dual_momentum(
+        p_df=df,
+        p_feature_id="F_roc_4800_F_mid_f32_f16",
+        p_default_etf_idx=2,
+        p_top_n=1,
+    )
+
+    return df
+
+
+def create_test_bundle_with_multiple_etfs(p_base_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create a test bundle with multiple ETFs by copying QQQ data to other ETFs.
+    This allows testing the full dual momentum strategy.
+    """
+    df = p_base_df.copy()
+
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    qqq_cols = [c for c in numeric_cols if c.startswith("QQQ_")]
+
+    for etf in ["SPY", "TLT", "GLD", "VWO"]:
+        for col in qqq_cols:
+            new_col = col.replace("QQQ_", f"{etf}_")
+            multiplier = 0.8 + 0.4 * np.random.random()
+            df[new_col] = df[col].astype(float) * multiplier
+
+    return df

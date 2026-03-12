@@ -1,8 +1,10 @@
 """
 Dual Momentum Strategy Backtest.
 
-Runs backtest on dual momentum allocations, computing performance metrics,
-order generation, and period returns.
+Runs backtest on dual momentum allocations, computing performance metrics
+and order generation.
+
+Takes the output of compute_dual_momentum() as input (DataFrame with A_*_alloc columns).
 """
 
 from dataclasses import dataclass
@@ -12,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from strat.dual_momentum import ETF_LIST
+from strat.strat_backtest import ETF_LIST
 
 
 OHLC_COLS = {
@@ -62,6 +64,16 @@ def generate_orders_from_allocations(
     p_df: pd.DataFrame,
     p_rebalance_threshold: float = 0.05,
 ) -> Tuple[pd.DataFrame, List[Order]]:
+    """
+    Generate orders from allocation DataFrame.
+
+    Args:
+        p_df: DataFrame with A_*_alloc columns (output from compute_dual_momentum)
+        p_rebalance_threshold: Minimum allocation change to trigger rebalance
+
+    Returns:
+        Tuple of (orders_df, orders_list)
+    """
     df = p_df.copy()
 
     alloc_cols = [f"A_{etf}_alloc" for etf in ETF_LIST]
@@ -153,70 +165,114 @@ def generate_orders_from_allocations(
 def compute_strategy_performance(
     p_df: pd.DataFrame,
     p_orders_df: pd.DataFrame,
-    p_output_dir: Optional[Path] = None,
-    p_plot_histogram: bool = False,
-    p_prefix: Optional[str] = None,
 ) -> Tuple[Dict, pd.DataFrame]:
-    df = p_df.copy()
+    """
+    Compute strategy performance from trade-by-trade P&L.
 
-    alloc_cols = [f"A_{etf}_alloc" for etf in ETF_LIST]
-    close_cols = [f"{etf}_{OHLC_COLS['close']}" for etf in ETF_LIST]
+    Args:
+        p_df: DataFrame with A_*_alloc columns and OHLC data
+        p_orders_df: Orders DataFrame from generate_orders_from_allocations
 
-    returns_matrix = np.zeros(len(df))
-    portfolio_alloc = np.zeros((len(df), len(ETF_LIST)))
+    Returns:
+        Tuple of (metrics_dict, result_df)
+    """
+    close_col_map = {etf: f"{etf}_{OHLC_COLS['close']}" for etf in ETF_LIST}
 
-    for i in range(len(df)):
-        allocations = np.array([df.iloc[i][col] for col in alloc_cols])
-        portfolio_alloc[i] = allocations
+    positions = {etf: {"entry_price": None, "entry_idx": None} for etf in ETF_LIST}
+    pnl_list = []
+    portfolio_value = 1.0
+    bar_pnl = np.zeros(len(p_df))
+    p_df = p_df.copy()
 
-    for j in range(len(close_cols)):
-        etf_returns = df[close_cols[j]].pct_change().fillna(0).values
-        returns_matrix += portfolio_alloc[:, j] * etf_returns
+    timestamp_to_idx = {ts: i for i, ts in enumerate(p_df.index)}
+    p_orders_sorted = p_orders_df.sort_values("timestamp")
 
-    df["pnl_per_bar"] = returns_matrix
-    df["cum_pnl"] = (1 + returns_matrix).cumprod() - 1
-    portfolio_value = (1 + returns_matrix).cumprod()
-    df["portfolio_value"] = portfolio_value
+    for _, order in p_orders_sorted.iterrows():
+        ts = order["timestamp"]
+        etf = order["etf"]
+        direction = order["direction"]
+        close_col = close_col_map[etf]
 
-    returns = returns_matrix[returns_matrix != 0]
-    pnl_per_bar = returns_matrix
+        if ts not in p_df.index:
+            continue
+        current_price = p_df.loc[ts, close_col]
 
-    rolling_max = np.maximum.accumulate(portfolio_value)
-    drawdown = (portfolio_value - rolling_max) / rolling_max
+        pos = positions[etf]
+
+        if direction == 1.0:
+            pos["entry_price"] = current_price
+            pos["entry_idx"] = ts
+
+        elif direction == -1.0:
+            if pos["entry_price"] is not None and pos["entry_idx"] is not None:
+                trade_pnl = (current_price - pos["entry_price"]) / pos["entry_price"]
+                portfolio_value *= (1 + trade_pnl)
+                entry_idx = timestamp_to_idx[pos["entry_idx"]]
+                exit_idx = timestamp_to_idx[ts]
+                bar_pnl[entry_idx:exit_idx + 1] += trade_pnl / (exit_idx - entry_idx + 1)
+                pnl_list.append(
+                    {
+                        "entry_time": pos["entry_idx"],
+                        "exit_time": ts,
+                        "etf": etf,
+                        "entry_price": pos["entry_price"],
+                        "exit_price": current_price,
+                        "pnl": trade_pnl,
+                    }
+                )
+                pos["entry_price"] = None
+                pos["entry_idx"] = None
+
+    p_df["pnl_per_bar"] = bar_pnl
+    p_df["cum_pnl"] = np.cumsum(bar_pnl)
+    p_df["portfolio_value"] = 1.0 + p_df["cum_pnl"]
+
+    if pnl_list:
+        pnl_df = pd.DataFrame(pnl_list)
+        returns = pnl_df["pnl"].values
+    else:
+        returns = np.array([0.0])
+
+    total_pnl = portfolio_value - 1.0
+
+    returns_nonzero = returns[returns != 0]
+
+    portfolio_values = p_df["portfolio_value"].values
+    rolling_max = np.maximum.accumulate(portfolio_values)
+    drawdown = (portfolio_values - rolling_max) / rolling_max
     max_dd = drawdown.min()
 
-    positive_returns = returns[returns > 0]
-    negative_returns = returns[returns < 0]
+    positive_returns = returns_nonzero[returns_nonzero > 0]
+    negative_returns = returns_nonzero[returns_nonzero < 0]
 
-    n_bars = len(df)
+    n_bars = len(p_df)
     n_months = n_bars / (30 * 24)
 
-    total_pnl = portfolio_value[-1] - 1.0
-    avg_pnl_per_bar = (
-        np.mean(pnl_per_bar[pnl_per_bar != 0]) if np.any(pnl_per_bar != 0) else 0
-    )
+    avg_pnl_per_bar = np.mean(bar_pnl[bar_pnl != 0]) if np.any(bar_pnl != 0) else 0
 
     sharpe = 0.0
-    if np.std(returns) > 0 and len(returns) > 1:
-        annualized_return = np.mean(returns) * 252 * 24
-        annualized_vol = np.std(returns) * np.sqrt(252 * 24)
+    if np.std(returns_nonzero) > 0 and len(returns_nonzero) > 1:
+        annualized_return = np.mean(returns_nonzero) * 252 * 24
+        annualized_vol = np.std(returns_nonzero) * np.sqrt(252 * 24)
         sharpe = annualized_return / annualized_vol if annualized_vol > 0 else 0
 
     calmar = 0.0
-    if max_dd < 0 and n_bars > 0:
-        annualized_return = (portfolio_value[-1] / portfolio_value[0]) ** (
+    if max_dd < 0 and n_bars > 0 and portfolio_values[0] > 0 and portfolio_values[-1] > 0:
+        annualized_return = (portfolio_values[-1] / portfolio_values[0]) ** (
             252 * 24 / n_bars
         ) - 1
         calmar = annualized_return / abs(max_dd)
 
     profit_factor = 0.0
-    gross_profit = np.sum(positive_returns)
-    gross_loss = abs(np.sum(negative_returns))
+    gross_profit = np.sum(positive_returns) if len(positive_returns) > 0 else 0
+    gross_loss = abs(np.sum(negative_returns)) if len(negative_returns) > 0 else 0
     if gross_loss > 0:
         profit_factor = gross_profit / gross_loss
 
     n_trades = len(p_orders_df)
-    win_rate = len(positive_returns) / len(returns) if len(returns) > 0 else 0
+    win_rate = (
+        len(positive_returns) / len(returns_nonzero) if len(returns_nonzero) > 0 else 0
+    )
     avg_win = np.mean(positive_returns) if len(positive_returns) > 0 else 0
     avg_loss = np.mean(negative_returns) if len(negative_returns) > 0 else 0
 
@@ -225,8 +281,8 @@ def compute_strategy_performance(
         "total_return_pct": total_pnl * 100,
         "pnl_per_bar": avg_pnl_per_bar,
         "pnl_per_month": total_pnl / n_months if n_months > 0 else 0,
-        "cum_pnl_final": df["cum_pnl"].iloc[-1],
-        "final_portfolio_value": portfolio_value[-1],
+        "cum_pnl_final": p_df["cum_pnl"].iloc[-1],
+        "final_portfolio_value": portfolio_values[-1],
         "max_drawdown": max_dd,
         "max_dd_pct": max_dd * 100,
         "sharpe_ratio": sharpe,
@@ -242,104 +298,46 @@ def compute_strategy_performance(
         "n_trades": n_trades,
     }
 
-    return metrics, df
+    return metrics, p_df
 
 
-def compute_period_returns(
-    p_df: pd.DataFrame,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def save_backtest_diagnostics(
+    p_result_df: pd.DataFrame,
+    p_orders_df: pd.DataFrame,
+    p_monthly_returns: pd.DataFrame,
+    p_yearly_returns: pd.DataFrame,
+    p_metrics: dict,
+    p_output_dir: Path,
+) -> None:
     """
-    Compute monthly and yearly returns from the backtest results.
-
-    Args:
-        p_df: DataFrame with datetime index and 'pnl_per_bar' column
-
-    Returns:
-        Tuple of (monthly_returns_df, yearly_returns_df)
+    Save comprehensive backtest diagnostics.
     """
-    df = p_df.copy()
+    p_output_dir.mkdir(parents=True, exist_ok=True)
 
-    if not isinstance(df.index, pd.DatetimeIndex):
-        index_values = df.index.values.astype(np.int64)
+    orders_csv = p_output_dir / "orders.csv"
+    p_orders_df.to_csv(orders_csv, index=False)
+    print(f"Saved orders: {orders_csv}")
 
-        try:
-            index_values = index_values / 1e7
-            reference_time = pd.Timestamp("2000-01-01 00:00:00")
-            df["datetime"] = reference_time + pd.to_timedelta(index_values, unit="s")
-            df = df.set_index("datetime")
-        except Exception as e:
-            raise ValueError(
-                f"Cannot convert index to datetime. Index type: {type(df.index)}, sample: {df.index[:3].tolist()}, error: {e}"
-            )
+    result_parquet = p_output_dir / "backtest_result.parquet"
+    p_result_df.to_parquet(result_parquet)
+    print(f"Saved backtest result: {result_parquet}")
 
-    df["month"] = df.index.to_period("M")
-    df["year"] = df.index.to_period("Y")
+    monthly_csv = p_output_dir / "monthly_returns.csv"
+    p_monthly_returns.to_csv(monthly_csv, index=False)
+    print(f"Saved monthly returns: {monthly_csv}")
 
-    monthly_returns = df.groupby("month").agg(
-        return_=("pnl_per_bar", lambda x: (1 + x).prod() - 1),
-        n_bars=("pnl_per_bar", "count"),
-        positive_bars=("pnl_per_bar", lambda x: (x > 0).sum()),
-        negative_bars=("pnl_per_bar", lambda x: (x < 0).sum()),
-    )
+    yearly_csv = p_output_dir / "yearly_returns.csv"
+    p_yearly_returns.to_csv(yearly_csv, index=False)
+    print(f"Saved yearly returns: {yearly_csv}")
 
-    monthly_returns["win_rate"] = (
-        monthly_returns["positive_bars"] / monthly_returns["n_bars"]
-    )
-    monthly_returns = monthly_returns.rename(
-        columns={"return_": "return"}
-    ).reset_index()
-
-    yearly_returns = df.groupby("year").agg(
-        return_=("pnl_per_bar", lambda x: (1 + x).prod() - 1),
-        n_bars=("pnl_per_bar", "count"),
-        positive_bars=("pnl_per_bar", lambda x: (x > 0).sum()),
-        negative_bars=("pnl_per_bar", lambda x: (x < 0).sum()),
-    )
-
-    yearly_returns["win_rate"] = (
-        yearly_returns["positive_bars"] / yearly_returns["n_bars"]
-    )
-    yearly_returns = yearly_returns.rename(columns={"return_": "return"}).reset_index()
-
-    return monthly_returns, yearly_returns
-
-
-def print_metrics(metrics: Dict):
-    """Print performance metrics in formatted table."""
-    print("\n" + "=" * 60)
-    print("STRATEGY PERFORMANCE METRICS")
-    print("=" * 60)
-
-    print(f"\n{'Returns':^60}")
-    print("-" * 60)
-    print(
-        f"  Total PnL:              {metrics['total_return']:.4f} ({metrics['total_return_pct']:.2f}%)"
-    )
-    print(f"  Final Portfolio Value:  {metrics['final_portfolio_value']:.4f}")
-    print(f"  PnL per Bar:            {metrics['pnl_per_bar']:.6f}")
-    print(f"  PnL per Month:          {metrics['pnl_per_month']:.4f}")
-
-    print(f"\n{'Risk Metrics':^60}")
-    print("-" * 60)
-    print(
-        f"  Max Drawdown:           {metrics['max_drawdown']:.4f} ({metrics['max_dd_pct']:.2f}%)"
-    )
-    print(f"  Sharpe Ratio:           {metrics['sharpe_ratio']:.4f}")
-    print(f"  Calmar Ratio:           {metrics['calmar_ratio']:.4f}")
-
-    print(f"\n{'Trade Statistics':^60}")
-    print("-" * 60)
-    print(f"  Number of Trades:       {metrics['n_trades']}")
-    print(f"  Win Rate:               {metrics['win_rate']:.2%}")
-    print(f"  Avg Win:                {metrics['avg_win']:.6f}")
-    print(f"  Avg Loss:               {metrics['avg_loss']:.6f}")
-    print(f"  Avg Win/Loss Ratio:     {metrics['avg_win_loss_ratio']:.4f}")
-    print(f"  Profit Factor:          {metrics['profit_factor']:.4f}")
-
-    print(f"\n{'Bar Statistics':^60}")
-    print("-" * 60)
-    print(f"  Total Bars:             {metrics['n_bars']}")
-    print(f"  Positive Bars:          {metrics['n_positive_bars']}")
-    print(f"  Negative Bars:          {metrics['n_negative_bars']}")
-
-    print("=" * 60)
+    metrics_txt = p_output_dir / "metrics.txt"
+    with open(metrics_txt, "w") as f:
+        f.write("=" * 60 + "\n")
+        f.write("STRATEGY PERFORMANCE METRICS\n")
+        f.write("=" * 60 + "\n\n")
+        for key, value in p_metrics.items():
+            if isinstance(value, float):
+                f.write(f"{key}: {value:.6f}\n")
+            else:
+                f.write(f"{key}: {value}\n")
+    print(f"Saved metrics: {metrics_txt}")

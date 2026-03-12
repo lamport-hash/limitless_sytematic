@@ -1,0 +1,62 @@
+services:
+  manager:
+    build:
+      context: ..
+      dockerfile: ui_fastapi/Dockerfile
+    command: python -m manager.manager_app
+    ports:
+      - "8778:8888"
+    volumes:
+      - ..:/app
+      - ${HOME}/sing/limitless_sytematic/data:/app/data
+    environment:
+      - MANAGER_PORT=8888
+      - MANAGER_HOST=0.0.0.0
+      - DATABASE_PATH=./data/manager.db
+      - JOB_OUTPUT_DIR=./data/output
+      - API_KEYS_STR={"mgr-admin-001":{"role":"admin"},"worker-key-001":{"role":"worker"},"client-key-001":{"role":"client"}}
+    working_dir: /app/ui_fastapi
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build:
+      context: ..
+      dockerfile: ui_fastapi/Dockerfile
+    command: python -m worker.worker_app
+    ports:
+      - "8890:8890"
+    volumes:
+      - ..:/app
+      - ${HOME}/sing/limitless_sytematic/data:/app/data
+    environment:
+      - WORKER_NAME=worker-docker-1
+      - MANAGER_URL=http://manager:8888
+      - MANAGER_API_KEY=worker-key-001
+    working_dir: /app/ui_fastapi
+    depends_on:
+      manager:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+
+  ui:
+    build:
+      context: ..
+      dockerfile: ui_fastapi/Dockerfile
+    command: python app.py
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/app
+      - ${HOME}/sing/limitless_sytematic/data:/app/data
+    environment:
+      - MANAGER_URL=http://manager:8888
+      - MANAGER_API_KEY=client-key-001
+    working_dir: /app/ui_fastapi
+    depends_on:
+      manager:
+        condition: service_healthy

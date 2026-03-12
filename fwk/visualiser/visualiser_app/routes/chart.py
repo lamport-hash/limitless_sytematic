@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from visualiser_app.services import parquet_reader
