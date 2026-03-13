@@ -25,6 +25,12 @@ from features.f_order_flow import (
     feature_trade_avg_trade_size_dollar_ma_ratio,
     feature_trade_trade_count_ma_ratio,
 )
+from features.f_daily_signal import (
+    feature_daily_signal,
+    feature_daily_signal_with_exit,
+    feature_pointpos,
+)
+from features.f_total_signal import feature_total_signal
 from merger.merger_utils import (
     convert_df_cols_float_to_float,
     scale_dataframe_columns,
@@ -243,6 +249,8 @@ class BaseDataFrame:
             FeatureType.T_AVG_TS_USD_MA_RATIO: self._add_trade_avg_trade_size_dollar_ma_ratio,
             FeatureType.T_TC_MA_RATIO: self._add_trade_trade_count_ma_ratio,
             FeatureType.ROC: self._add_roc,
+            FeatureType.DAILY_SIGNAL: self._add_daily_signal,
+            FeatureType.TOTAL_SIGNAL: self._add_total_signal,
         }
 
         method = feature_methods.get(feature_type)
@@ -487,6 +495,40 @@ class BaseDataFrame:
             colname = f"F_trade_trade_count_ma_ratio_{window}_f64"
             self.df[colname] = feature_trade_trade_count_ma_ratio(self.df, p_window=window)
             self._register_feature(colname, FeatureType.T_TC_MA_RATIO)
+
+    def _add_daily_signal(
+        self,
+        periods: Optional[List[int]] = None,
+        p_test_candles: int = 8,
+        p_exit_delay: int = 4,
+        **kwargs: Any,
+    ) -> None:
+        signal_col = "F_daily_signal_f16"
+        stop_col = "F_daily_stop_price_f64"
+        exit_col = "F_daily_exit_f16"
+        
+        self.df[signal_col] = feature_daily_signal(self.df)
+        
+        stop_price, exit_signal = feature_daily_signal_with_exit(
+            self.df,
+            p_test_candles=p_test_candles,
+            p_exit_delay=p_exit_delay,
+        )
+        self.df[stop_col] = stop_price
+        self.df[exit_col] = exit_signal
+        
+        self._register_feature(signal_col, FeatureType.DAILY_SIGNAL)
+        self._register_feature(stop_col, FeatureType.DAILY_SIGNAL)
+        self._register_feature(exit_col, FeatureType.DAILY_SIGNAL)
+
+    def _add_total_signal(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
+        long_col = "F_total_signal_long_f16"
+        short_col = "F_total_signal_short_f16"
+        long_signal, short_signal = feature_total_signal(self.df)
+        self.df[long_col] = long_signal
+        self.df[short_col] = short_signal
+        self._register_feature(long_col, FeatureType.TOTAL_SIGNAL)
+        self._register_feature(short_col, FeatureType.TOTAL_SIGNAL)
 
     def convert_f16_columns(self) -> "BaseDataFrame":
         """Convert all _f16 columns to the target precision."""

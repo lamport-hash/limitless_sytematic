@@ -33,6 +33,8 @@ class FeatureType(StrEnum):
     T_AVG_TS_USD_MA_RATIO = "trade_avg_trade_size_dollar_ma_ratio"
     T_TC_MA_RATIO = "trade_trade_count_ma_ratio"
     ROC = "roc"
+    DAILY_SIGNAL = "daily_signal"
+    TOTAL_SIGNAL = "total_signal"
 
 
 class NormalisationType(StrEnum):
@@ -177,6 +179,16 @@ FEATURE_TYPE_TO_NORMALISATION: Dict[
         NormalisationPeriodType.W1,
     ),  # Trade count ratio → zscore
     FeatureType.ROC: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.DAILY_SIGNAL: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.TOTAL_SIGNAL: (
         NormalisationType.NONE,
         NormalisationPeriodType.Y1,
         NormalisationPeriodType.W1,

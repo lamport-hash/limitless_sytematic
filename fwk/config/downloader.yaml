@@ -1,0 +1,19 @@
+downloader:
+  base_folder: /data/import/downloader/candle_1min
+  exchanges:
+  - connector: ccxt-rest
+    market_type: spot
+    name: binance
+    start_date: '2024-01-01'
+    symbols:
+    - BTCUSDT
+    - ETHUSDT
+  nb_days_to_download: 365
+priority_config:
+  daily_update_priority: 1
+  gap_fill_priority: 2
+  new_symbol_priority: 0
+sleep_settings:
+  enable_sleep_mode: false
+  priority_new_symbols: true
+  wake_minute_past_hour: 15
