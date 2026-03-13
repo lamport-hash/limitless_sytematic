@@ -14,7 +14,7 @@ import pandas as pd
 from numba import njit
 from typing import Tuple
 
-from core.enums import g_high_col, g_low_col
+from core.enums import g_high_col, g_low_col, g_close_col
 
 
 @njit
@@ -41,7 +41,7 @@ def smma_numba(p_src: np.ndarray, p_length: int) -> np.ndarray:
 def feature_cto_line_signal(
     p_df: pd.DataFrame,
     p_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
-) -> Tuple[pd.Series, pd.Series]:
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
     """
     Detects CTO Line signals and generates trading signals.
 
@@ -61,12 +61,15 @@ def feature_cto_line_signal(
         p_params (Tuple[int, int, int, int]): SMMA periods (v1, m1, m2, v2).
 
     Returns:
-        Tuple[pd.Series, pd.Series]: A tuple containing:
+        Tuple[pd.Series, pd.Series, pd.Series, pd.Series]: A tuple containing:
             - long_signal: Series with 1 where long pattern detected, 0 otherwise
             - short_signal: Series with 1 where short pattern detected, 0 otherwise
+            - v1_rel_dist: Relative distance (v1 - close) / close
+            - v2_rel_dist: Relative distance (v2 - close) / close
     """
     hl2 = (p_df[g_high_col] + p_df[g_low_col]) / 2
     hl2_arr = hl2.to_numpy()
+    close = p_df[g_close_col].to_numpy()
 
     v1 = smma_numba(hl2_arr, p_params[0])
     m1 = smma_numba(hl2_arr, p_params[1])
@@ -80,4 +83,12 @@ def feature_cto_line_signal(
     long_signal = p1.astype(np.int8)
     short_signal = p3.astype(np.int8)
 
-    return pd.Series(long_signal, index=p_df.index), pd.Series(short_signal, index=p_df.index)
+    v1_rel_dist = (v1 - close) / close
+    v2_rel_dist = (v2 - close) / close
+
+    return (
+        pd.Series(long_signal, index=p_df.index),
+        pd.Series(short_signal, index=p_df.index),
+        pd.Series(v1_rel_dist, index=p_df.index),
+        pd.Series(v2_rel_dist, index=p_df.index),
+    )

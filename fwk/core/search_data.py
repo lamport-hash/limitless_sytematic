@@ -9,8 +9,9 @@ Directory structure:
 """
 
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 from dataclasses import dataclass
+from enum import Enum
 
 from core.data_org import (
     NORMALISED_DIR,
@@ -211,14 +212,14 @@ def list_available(
     }
 
 
-def _enum_to_str(value: Optional[Union[str, object]]) -> Optional[str]:
+def _enum_to_str(value: Optional[Union[str, Enum]]) -> Optional[str]:
     """Convert enum to string value, or pass through string."""
     if value is None:
         return None
     if isinstance(value, str):
         return value.lower()
-    if hasattr(value, "value"):
-        return value.value.lower()
+    if isinstance(value, Enum):
+        return str(value.value).lower()
     return str(value).lower()
 
 

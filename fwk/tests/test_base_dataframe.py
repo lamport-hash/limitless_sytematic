@@ -19,7 +19,9 @@ from core.data_org import (
 )
 
 
-QQQ_FILE = "/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/QQQ/QQQ_*_*_candle_1hour.df.parquet"
+QQQ_FILE = get_normalised_file(
+    MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "QQQ"
+)
 
 ALL_FEATURE_TYPES = [
     FeatureType.PRICE,

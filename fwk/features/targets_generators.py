@@ -1,9 +1,13 @@
-from typing import Dict, Any
+import logging
+import re
+from pathlib import Path
+from typing import Dict, Any, Union
+
 import pandas as pd
 import numpy as np
-import yaml
+from ruamel.yaml import YAML
 
-from dataframe_utils.df_utils import (
+from core.enums import (
     g_close_col,
     g_open_col,
     g_high_col,
@@ -18,8 +22,12 @@ from dataframe_utils.df_utils import (
     g_nt_col,
     g_la_vol_col,
     g_lqa_vol_col,
+    g_precision,
 )
-from dataframe_utils.df_utils import g_precision, g_yaml_t_classification
+from merger.merger_utils import g_yaml_t_classification
+
+
+logger = logging.getLogger(__name__)
 
 
 # all the below functions assume that the df contains the following columns
@@ -305,8 +313,11 @@ def setup_framework_indicators(config_yaml, df, target_df):
 
     results = {}
 
-    # Extract new_targets section
-    config = yaml.safe_load(config_yaml)
+    yaml = YAML()
+    if isinstance(config_yaml, str):
+        config = yaml.load(config_yaml)
+    else:
+        config = config_yaml
     classification_targets = config.get(g_yaml_t_classification, {})
 
     if classification_targets == {}:
@@ -323,3 +334,65 @@ def setup_framework_indicators(config_yaml, df, target_df):
             print(f"⚠️ Unknown target type: {target_type}")
 
     return target_df
+
+
+def add_targets_from_md(
+    filepath: Union[str, Path],
+    df: pd.DataFrame,
+    target_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Add targets defined in a markdown file containing a YAML code block.
+
+    The markdown file should contain a YAML code block like:
+
+    ```yaml
+    t_classification:
+      btc_stop_loss_signal_class_240:
+        type: single_asset
+        asset: BTC
+        function: gen_perfect_stoploss_signal_class
+        params:
+          close_col: S_close_f32
+          high_col: S_high_f32
+          low_col: S_low_f32
+          up_objective: 0.012
+          up_stoploss: -0.004
+          down_objective: -0.012
+          down_stoploss: 0.004
+          N_periods: 240
+    ```
+
+    Args:
+        filepath: Path to .md file with YAML target configuration.
+        df: DataFrame with OHLCV columns.
+        target_df: DataFrame to add target columns to.
+
+    Returns:
+        pd.DataFrame: The target_df with added target columns.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If no YAML block found or invalid configuration.
+    """
+    filepath = Path(filepath)
+    if not filepath.exists():
+        raise FileNotFoundError(f"Target config file not found: {filepath}")
+
+    content = filepath.read_text(encoding="utf-8")
+
+    yaml_block_match = re.search(
+        r"```yaml\s*\n(.*?)\n```", content, re.DOTALL | re.IGNORECASE
+    )
+    if not yaml_block_match:
+        raise ValueError(f"No YAML code block found in {filepath}")
+
+    yaml_content = yaml_block_match.group(1)
+
+    yaml = YAML()
+    config = yaml.load(yaml_content)
+
+    if not config:
+        raise ValueError(f"Invalid YAML content in {filepath}")
+
+    return setup_framework_indicators(config, df, target_df)

@@ -40,15 +40,20 @@ def test_smma_numba():
 def test_feature_cto_line_signal():
     """Test CTO Line signal generation with synthetic data."""
     n = 100
+    high = np.sin(np.linspace(0, 4*np.pi, n)) * 10 + 100
+    low = np.sin(np.linspace(0, 4*np.pi, n)) * 10 + 90
     df = pd.DataFrame({
-        'S_high_f32': np.sin(np.linspace(0, 4*np.pi, n)) * 10 + 100,
-        'S_low_f32': np.sin(np.linspace(0, 4*np.pi, n)) * 10 + 90,
+        'S_high_f32': high,
+        'S_low_f32': low,
+        'S_close_f32': (high + low) / 2,
     })
     
-    long_signal, short_signal = feature_cto_line_signal(df, p_params=(15, 19, 25, 29))
+    long_signal, short_signal, v1_rel_dist, v2_rel_dist = feature_cto_line_signal(df, p_params=(15, 19, 25, 29))
     
     assert len(long_signal) == n, "Long signal length should match input"
     assert len(short_signal) == n, "Short signal length should match input"
+    assert len(v1_rel_dist) == n, "v1_rel_dist length should match input"
+    assert len(v2_rel_dist) == n, "v2_rel_dist length should match input"
     assert long_signal.dtype == np.int8, "Long signal should be int8"
     assert short_signal.dtype == np.int8, "Short signal should be int8"
     
@@ -58,6 +63,8 @@ def test_feature_cto_line_signal():
     print(f"CTO Line signal test passed.")
     print(f"  Long signals: {long_signal.sum()}")
     print(f"  Short signals: {short_signal.sum()}")
+    print(f"  v1_rel_dist range: [{v1_rel_dist.min():.6f}, {v1_rel_dist.max():.6f}]")
+    print(f"  v2_rel_dist range: [{v2_rel_dist.min():.6f}, {v2_rel_dist.max():.6f}]")
 
 
 def test_base_dataframe_cto_line_feature():
@@ -85,9 +92,13 @@ def test_base_dataframe_cto_line_feature():
     
     assert "F_cto_line_long_f16" in result_df.columns, "Long signal column should exist"
     assert "F_cto_line_short_f16" in result_df.columns, "Short signal column should exist"
+    assert "F_cto_line_v1_rel_dist_f16" in result_df.columns, "v1_rel_dist column should exist"
+    assert "F_cto_line_v2_rel_dist_f16" in result_df.columns, "v2_rel_dist column should exist"
     
     long_col = result_df["F_cto_line_long_f16"]
     short_col = result_df["F_cto_line_short_f16"]
+    v1_rel_col = result_df["F_cto_line_v1_rel_dist_f16"]
+    v2_rel_col = result_df["F_cto_line_v2_rel_dist_f16"]
     
     assert long_col.isin([0, 1]).all(), "Long signal should only contain 0 or 1"
     assert short_col.isin([0, 1]).all(), "Short signal should only contain 0 or 1"

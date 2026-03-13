@@ -35,6 +35,7 @@ class FeatureType(StrEnum):
     ROC = "roc"
     DAILY_SIGNAL = "daily_signal"
     TOTAL_SIGNAL = "total_signal"
+    CTO_LINE = "cto_line"
 
 
 class NormalisationType(StrEnum):
@@ -189,6 +190,11 @@ FEATURE_TYPE_TO_NORMALISATION: Dict[
         NormalisationPeriodType.W1,
     ),
     FeatureType.TOTAL_SIGNAL: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.CTO_LINE: (
         NormalisationType.NONE,
         NormalisationPeriodType.Y1,
         NormalisationPeriodType.W1,

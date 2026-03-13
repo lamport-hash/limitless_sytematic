@@ -24,6 +24,7 @@ dependencies = [
     "pandas-ta",
     "backtesting",
     "yfinance",
+    "ruamel.yaml",
 ]
 
 [project.optional-dependencies]

@@ -1,19 +1,33 @@
 import pandas as pd
 import gzip
+import glob
 import logging
 from pathlib import Path
+from typing import cast
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def load_normalized_df(filepath: str) -> pd.DataFrame:
+def load_normalized_df(filepath: str | Path) -> pd.DataFrame:
     """
     Load a normalized DataFrame (gzip-compressed pickle with .parquet extension).
+    
+    Supports glob patterns - if the path contains wildcards, resolves to first match.
     """
+    filepath = str(filepath)
+    
+    if "*" in filepath:
+        matches = glob.glob(filepath)
+        if not matches:
+            raise FileNotFoundError(f"No files match pattern: {filepath}")
+        filepath = matches[0]
+        logger.debug(f"Resolved glob pattern to: {filepath}")
+    
     with gzip.open(filepath, 'rb') as f:
-        return pd.read_pickle(f)
+        df = pd.read_pickle(f)  # pyright: ignore[reportArgumentType]
+        return cast(pd.DataFrame, df)
 
 
 def add_minutes_since_2000(df: pd.DataFrame, datetime_col: str, new_col_name: str) -> pd.DataFrame:

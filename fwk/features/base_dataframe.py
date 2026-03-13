@@ -1,7 +1,11 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import List, Tuple, Optional, Dict, Any
+import re
+from pathlib import Path
+from typing import List, Tuple, Optional, Dict, Any, Union
+
+from ruamel.yaml import YAML
 
 from features.features_utils import Feature, FeatureType
 from features.feature_ta_utils import (
@@ -31,6 +35,7 @@ from features.f_daily_signal import (
     feature_pointpos,
 )
 from features.f_total_signal import feature_total_signal
+from features.f_cto_line import feature_cto_line_signal
 from merger.merger_utils import (
     convert_df_cols_float_to_float,
     scale_dataframe_columns,
@@ -251,6 +256,7 @@ class BaseDataFrame:
             FeatureType.ROC: self._add_roc,
             FeatureType.DAILY_SIGNAL: self._add_daily_signal,
             FeatureType.TOTAL_SIGNAL: self._add_total_signal,
+            FeatureType.CTO_LINE: self._add_cto_line,
         }
 
         method = feature_methods.get(feature_type)
@@ -280,6 +286,81 @@ class BaseDataFrame:
         """
         for feature_type in feature_types:
             self.add_feature(feature_type, periods=periods, **kwargs)
+        return self
+
+    def add_features_from_md(self, filepath: Union[str, Path]) -> "BaseDataFrame":
+        """
+        Add features defined in a markdown file containing a YAML code block.
+
+        The markdown file should contain a YAML code block like:
+
+        ```yaml
+        features:
+          - type: RSI
+            periods: [14, 60, 240]
+          - type: EMA
+            periods: [15, 60]
+          - type: HIST_VOLATILITY
+            periods: [15, 60]
+          - type: DAILY_SIGNAL
+            kwargs:
+              p_test_candles: 8
+              p_exit_delay: 4
+        ```
+
+        Args:
+            filepath: Path to .md file with YAML feature configuration.
+
+        Returns:
+            BaseDataFrame: Self for method chaining.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ValueError: If no YAML block found or invalid configuration.
+        """
+        filepath = Path(filepath)
+        if not filepath.exists():
+            raise FileNotFoundError(f"Feature config file not found: {filepath}")
+
+        content = filepath.read_text(encoding="utf-8")
+
+        yaml_block_match = re.search(
+            r"```yaml\s*\n(.*?)\n```", content, re.DOTALL | re.IGNORECASE
+        )
+        if not yaml_block_match:
+            raise ValueError(f"No YAML code block found in {filepath}")
+
+        yaml_content = yaml_block_match.group(1)
+
+        yaml = YAML()
+        config = yaml.load(yaml_content)
+
+        if not config or "features" not in config:
+            raise ValueError(f"No 'features' key found in YAML config in {filepath}")
+
+        features_config = config["features"]
+        if not features_config:
+            logger.warning(f"Empty features list in {filepath}")
+            return self
+
+        for feature_config in features_config:
+            if not isinstance(feature_config, dict) or "type" not in feature_config:
+                logger.warning(f"Invalid feature config: {feature_config}")
+                continue
+
+            try:
+                feature_type = FeatureType(feature_config["type"])
+            except ValueError:
+                logger.warning(
+                    f"Unknown FeatureType '{feature_config['type']}' in {filepath}"
+                )
+                continue
+
+            periods = feature_config.get("periods")
+            kwargs = feature_config.get("kwargs", {})
+
+            self.add_feature(feature_type, periods=periods, **kwargs)
+
         return self
 
     def _register_feature(
@@ -529,6 +610,26 @@ class BaseDataFrame:
         self.df[short_col] = short_signal
         self._register_feature(long_col, FeatureType.TOTAL_SIGNAL)
         self._register_feature(short_col, FeatureType.TOTAL_SIGNAL)
+
+    def _add_cto_line(
+        self,
+        periods: Optional[List[int]] = None,
+        params: Tuple[int, int, int, int] = (15, 19, 25, 29),
+        **kwargs: Any,
+    ) -> None:
+        long_col = "F_cto_line_long_f16"
+        short_col = "F_cto_line_short_f16"
+        v1_rel_dist_col = "F_cto_line_v1_rel_dist_f16"
+        v2_rel_dist_col = "F_cto_line_v2_rel_dist_f16"
+        long_signal, short_signal, v1_rel_dist, v2_rel_dist = feature_cto_line_signal(self.df, p_params=params)
+        self.df[long_col] = long_signal
+        self.df[short_col] = short_signal
+        self.df[v1_rel_dist_col] = v1_rel_dist
+        self.df[v2_rel_dist_col] = v2_rel_dist
+        self._register_feature(long_col, FeatureType.CTO_LINE)
+        self._register_feature(short_col, FeatureType.CTO_LINE)
+        self._register_feature(v1_rel_dist_col, FeatureType.CTO_LINE)
+        self._register_feature(v2_rel_dist_col, FeatureType.CTO_LINE)
 
     def convert_f16_columns(self) -> "BaseDataFrame":
         """Convert all _f16 columns to the target precision."""
