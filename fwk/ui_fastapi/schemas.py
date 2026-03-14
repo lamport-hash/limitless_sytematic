@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -56,6 +56,12 @@ class ModelType(str, Enum):
     DT_SK = "dt_sk"
     MLP_TORCH = "mlp_torch"
     BNN_GAUTO = "bnn_gauto"
+
+
+class DataSourceType(str, Enum):
+    SYNTHETIC = "synthetic"
+    FILE = "file"
+    NORMALIZED = "normalized"
 
 
 class XGBoostParams(BaseModel):
@@ -162,18 +168,54 @@ class FeatureBundlingConfig(BaseModel):
 
 
 class DataSourceConfig(BaseModel):
+    source_type: DataSourceType = Field(default=DataSourceType.SYNTHETIC)
     file_path: Optional[str] = Field(default=None)
     target_column: str = Field(default="target")
-    feature_columns: Optional[list[str]] = Field(default=None)
+    feature_columns: Optional[List[str]] = Field(default=None)
     use_synthetic: bool = Field(default=True)
     synthetic_n_samples: int = Field(default=1000, ge=100)
     synthetic_n_features: int = Field(default=10, ge=1)
+    symbol: Optional[str] = Field(default=None)
+    data_freq: Optional[str] = Field(default=None)
+    source: Optional[str] = Field(default=None)
+    product_type: Optional[str] = Field(default=None)
+    start: Optional[str] = Field(default=None)
+    end: Optional[str] = Field(default=None)
+
+
+class FeatureItem(BaseModel):
+    feature_type: str
+    periods: Optional[List[int]] = Field(default=None)
+    kwargs: Optional[Dict[str, Any]] = Field(default=None)
+
+
+class FeaturesConfig(BaseModel):
+    enabled: bool = Field(default=False)
+    features: List[FeatureItem] = Field(default_factory=list)
+    config_file: Optional[str] = Field(default=None)
+
+
+class TargetItem(BaseModel):
+    function: str
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TargetsConfig(BaseModel):
+    enabled: bool = Field(default=False)
+    asset: Optional[str] = Field(default=None)
+    targets: List[TargetItem] = Field(default_factory=list)
+    config_file: Optional[str] = Field(default=None)
+
+
+class JudgeConfig(BaseModel):
+    enabled: bool = Field(default=True)
+    generate_prompt: bool = Field(default=False)
 
 
 class FittingConfig(BaseModel):
     task_type: TaskType = Field(default=TaskType.REGRESSION)
     model_type: ModelType = Field(default=ModelType.XGB)
-    model_params: dict[str, Any] = Field(default_factory=dict)
+    model_params: Dict[str, Any] = Field(default_factory=dict)
     training: TrainingConfigSchema = Field(default_factory=TrainingConfigSchema)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     hyperparameter_tuning: HyperparameterTuningConfig = Field(
@@ -186,6 +228,9 @@ class FittingConfig(BaseModel):
         default_factory=FeatureBundlingConfig
     )
     data_source: DataSourceConfig = Field(default_factory=DataSourceConfig)
+    features: FeaturesConfig = Field(default_factory=FeaturesConfig)
+    targets: TargetsConfig = Field(default_factory=TargetsConfig)
+    judge: JudgeConfig = Field(default_factory=JudgeConfig)
     verbose: bool = Field(default=True)
     save_model: bool = Field(default=False)
     model_save_path: str = Field(default="./output")

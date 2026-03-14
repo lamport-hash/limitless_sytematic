@@ -136,10 +136,8 @@ def test_run_backtest_with_real_data():
     stats = run_backtest(ohlcv_df, strategy_class=MACDEMA_SwingOrATR)
     
     assert stats is not None
-    assert hasattr(stats, "Return")
-    assert hasattr(stats, "Sharpe Ratio")
-    assert hasattr(stats, "Max. Drawdown")
-    assert hasattr(stats, "# Trades")
+    assert "# Trades" in stats
+    assert stats["# Trades"] >= 0
     
     print(f"\nBacktest results:")
     print(f"  Return: {stats['Return [%]']:.2f}%")

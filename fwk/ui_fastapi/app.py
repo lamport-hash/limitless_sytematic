@@ -3,14 +3,28 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from core.search_data import list_available, search_data
+from features.features_utils import FEATURE_TYPE_TO_NORMALISATION, NormalisationType
+from features.targets_generators import TARGETS_FUNCTIONS
+from fitting.fitting_judge import (
+    DataInfo,
+    FittingJudge,
+    ModelInfo,
+    generate_ai_analysis_prompt,
+)
 
 from runner import process_manager
 from schemas import (
@@ -193,6 +207,198 @@ async def get_manager_status():
         "manager_url": MANAGER_URL,
         "configured": True,
     }
+
+
+class JudgeRequest(BaseModel):
+    metrics: Dict[str, Any]
+    model_type: str
+    task_type: str
+    model_params: Dict[str, Any] = {}
+    n_samples: int = 0
+    n_features: int = 0
+    train_size: int = 0
+    val_size: int = 0
+    test_size: int = 0
+
+
+@app.get("/api/data/search")
+async def search_normalized_data(
+    symbol: Optional[str] = None,
+    data_freq: Optional[str] = None,
+    source: Optional[str] = None,
+    product_type: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+):
+    """Search for normalized data files using core/search_data"""
+    try:
+        results = search_data(
+            p_symbol=symbol,
+            p_data_freq=data_freq,
+            p_source=source,
+            p_product_type=product_type,
+            p_start=start,
+            p_end=end,
+        )
+        return {
+            "files": [
+                {
+                    "path": str(f.path),
+                    "data_freq": f.data_freq,
+                    "source": f.source,
+                    "exchange": f.exchange,
+                    "product_type": f.product_type,
+                    "instrument": f.instrument,
+                    "filename": f.filename,
+                }
+                for f in results
+            ],
+            "count": len(results),
+            "success": True,
+        }
+    except Exception as e:
+        return {"files": [], "count": 0, "success": False, "error": str(e)}
+
+
+@app.get("/api/data/available")
+async def api_list_available():
+    """List available frequencies, sources, product types, instruments"""
+    try:
+        return {"success": True, **list_available()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/features/types")
+async def list_feature_types():
+    """List all available FeatureType values with their default normalisation"""
+    from features.features_utils import FEATURE_TYPE_TO_NORMALISATION
+
+    return {
+        "types": [
+            {
+                "name": ft.value,
+                "normalisation": {
+                    "type": norm[0].value,
+                    "first_period": norm[1].value,
+                    "rescale_freq": norm[2].value,
+                },
+            }
+            for ft, norm in FEATURE_TYPE_TO_NORMALISATION.items()
+        ],
+        "success": True,
+    }
+
+
+@app.get("/api/features/normalisation-types")
+async def list_normalisation_types():
+    """List all normalisation type options"""
+    from features.features_utils import NormalisationType
+
+    return {"types": [nt.value for nt in NormalisationType], "success": True}
+
+
+@app.get("/api/targets/functions")
+async def list_target_functions():
+    """List available target generator functions and their signatures"""
+    import inspect
+
+    from features.targets_generators import TARGETS_FUNCTIONS
+
+    functions = []
+    for name, func in TARGETS_FUNCTIONS.items():
+        sig = inspect.signature(func)
+        params = [
+            {
+                "name": p.name,
+                "default": str(p.default) if p.default != inspect.Parameter.empty else None,
+            }
+            for p in sig.parameters.values()
+        ]
+        functions.append({"name": name, "params": params})
+    return {"functions": functions, "success": True}
+
+
+@app.post("/api/judge/evaluate")
+async def judge_evaluate(request: JudgeRequest):
+    """Evaluate model fitting quality using FittingJudge"""
+    from fitting.fitting_core import TaskType as FITaskType
+    from fitting.fitting_models import ModelMetrics
+
+    try:
+        task_type = FITaskType(request.task_type)
+
+        metrics = ModelMetrics(
+            train_metrics=request.metrics.get("train", {}),
+            val_metrics=request.metrics.get("val"),
+            test_metrics=request.metrics.get("test"),
+        )
+
+        model_info = ModelInfo(
+            model_type=request.model_type,
+            task_type=task_type,
+            params=request.model_params,
+        )
+
+        data_info = DataInfo(
+            n_samples=request.n_samples,
+            n_features=request.n_features,
+            train_size=request.train_size,
+            val_size=request.val_size,
+            test_size=request.test_size,
+        )
+
+        judge = FittingJudge(metrics, model_info, data_info)
+        verdict = judge.evaluate()
+
+        return {
+            "rating": verdict.rating.value,
+            "score": verdict.score,
+            "issues": [
+                {"type": i.type.value, "severity": i.severity, "message": i.message, "details": i.details}
+                for i in verdict.issues
+            ],
+            "recommendations": verdict.recommendations,
+            "summary": verdict.summary,
+            "success": True,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/judge/prompt")
+async def judge_generate_prompt(request: JudgeRequest):
+    """Generate AI analysis prompt for external evaluation"""
+    from fitting.fitting_core import TaskType as FITaskType
+    from fitting.fitting_models import ModelMetrics
+
+    try:
+        task_type = FITaskType(request.task_type)
+
+        metrics = ModelMetrics(
+            train_metrics=request.metrics.get("train", {}),
+            val_metrics=request.metrics.get("val"),
+            test_metrics=request.metrics.get("test"),
+        )
+
+        model_info = ModelInfo(
+            model_type=request.model_type,
+            task_type=task_type,
+            params=request.model_params,
+        )
+
+        data_info = DataInfo(
+            n_samples=request.n_samples,
+            n_features=request.n_features,
+            train_size=request.train_size,
+            val_size=request.val_size,
+            test_size=request.test_size,
+        )
+
+        prompt = generate_ai_analysis_prompt(metrics, model_info, data_info)
+        return {"prompt": prompt, "success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @app.post("/api/manager/submit")

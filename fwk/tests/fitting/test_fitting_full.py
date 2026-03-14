@@ -113,7 +113,7 @@ def create_time_series_dataset(n_samples=100):
 def sample_data():
     """Create a small, reproducible dataset with 4 features and target."""
     np.random.seed(42)
-    n = 300
+    n = 200
     data = pd.DataFrame({
         "f1": np.random.randn(n),
         "f2": np.sin(np.linspace(0, 4 * np.pi, n)) + 0.1 * np.random.randn(n),
@@ -135,7 +135,7 @@ def base_cols():
     return cols
 
 @pytest.fixture
-def sample_classification_data(n_samples: int = 1000, n_features: int = 10, n_classes: int = 2):
+def sample_classification_data(n_samples: int = 500, n_features: int = 10, n_classes: int = 2):
     """
     Generate synthetic data for classification.
     

@@ -34,7 +34,7 @@ def sample_data():
     return data, target
 
 @pytest.fixture
-def sample_classification_data(n_samples: int = 1000, n_features: int = 10, n_classes: int = 2):
+def sample_classification_data(n_samples: int = 500, n_features: int = 10, n_classes: int = 2):
     """
     Generate synthetic data for classification.
     

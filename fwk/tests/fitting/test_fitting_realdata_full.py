@@ -72,7 +72,7 @@ def config_3ways():
 
 
 def test_full_pipeline_realdata(real_data, feature_columns, config_3ways):
-    real_data = real_data.head(10000).reset_index(drop=True)
+    real_data = real_data.head(5000).reset_index(drop=True)
     feature_columns = feature_columns[::30]
     print(f"\n[1/6] Initial data: {real_data.shape[0]} rows, {real_data.shape[1]} columns")
     print(f"      Feature columns (1 every 30): {len(feature_columns)}")

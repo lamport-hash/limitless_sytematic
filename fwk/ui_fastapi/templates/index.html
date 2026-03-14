@@ -71,9 +71,15 @@
                     </h3>
                     <div class="section-content" id="section-data-source">
                         <div class="form-group">
-                            <label>Use Synthetic Data</label>
-                            <input type="checkbox" id="use-synthetic" checked>
+                            <label>Source Type</label>
+                            <select id="source-type">
+                                <option value="synthetic">Synthetic Data</option>
+                                <option value="file">Local File</option>
+                                <option value="normalized">Normalized Data (Search)</option>
+                            </select>
                         </div>
+                        
+                        <!-- Synthetic options -->
                         <div id="synthetic-options">
                             <div class="form-group">
                                 <label>Samples</label>
@@ -84,6 +90,8 @@
                                 <input type="number" id="synthetic-features" value="10" min="1">
                             </div>
                         </div>
+                        
+                        <!-- Local file options -->
                         <div id="file-options" style="display:none;">
                             <div class="form-group">
                                 <label>Data File</label>
@@ -93,6 +101,140 @@
                                 <label>Target Column</label>
                                 <input type="text" id="target-column" value="target">
                             </div>
+                            <div class="form-group">
+                                <label>Feature Columns (comma-separated)</label>
+                                <input type="text" id="feature-columns" placeholder="Leave empty for all except target">
+                            </div>
+                        </div>
+                        
+                        <!-- Normalized data options -->
+                        <div id="normalized-options" style="display:none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Frequency</label>
+                                    <select id="norm-data-freq">
+                                        <option value="">All</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Source</label>
+                                    <select id="norm-source">
+                                        <option value="">All</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Product Type</label>
+                                    <select id="norm-product-type">
+                                        <option value="">All</option>
+                                        <option value="spot">Spot</option>
+                                        <option value="future">Future</option>
+                                        <option value="etf">ETF</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Symbol</label>
+                                    <input type="text" id="norm-symbol" placeholder="e.g., BTC, EURUSD">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Start Date</label>
+                                    <input type="text" id="norm-start" placeholder="20200101">
+                                </div>
+                                <div class="form-group">
+                                    <label>End Date</label>
+                                    <input type="text" id="norm-end" placeholder="20201231">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <button id="btn-search-data" class="btn btn-sm">Search</button>
+                                <span id="search-status"></span>
+                            </div>
+                            <div class="form-group">
+                                <label>Select File</label>
+                                <select id="norm-file-select">
+                                    <option value="">-- Search first --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Target Column</label>
+                                <input type="text" id="norm-target-column" value="target">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NEW: Features section -->
+                <div class="panel-section">
+                    <h3 class="section-header" data-section="features">
+                        <span class="toggle-icon">+</span> Features
+                    </h3>
+                    <div class="section-content collapsed" id="section-features">
+                        <div class="form-group">
+                            <label>Enable Feature Building</label>
+                            <input type="checkbox" id="features-enabled">
+                        </div>
+                        <div id="features-config" style="display:none;">
+                            <div class="form-group">
+                                <label>Config File (optional .md)</label>
+                                <input type="text" id="features-config-file" placeholder="features.md">
+                            </div>
+                            <div class="form-group">
+                                <label>Add Feature</label>
+                                <div class="form-row">
+                                    <select id="feature-type-select" style="flex:2">
+                                        <option value="">Select type...</option>
+                                    </select>
+                                </div>
+                                <div class="form-row" style="margin-top:5px">
+                                    <input type="text" id="feature-periods" placeholder="Periods (comma-sep)" style="flex:2">
+                                    <button id="btn-add-feature" class="btn btn-sm" style="flex:0.5">+</button>
+                                </div>
+                            </div>
+                            <div id="features-list" class="items-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NEW: Targets section -->
+                <div class="panel-section">
+                    <h3 class="section-header" data-section="targets">
+                        <span class="toggle-icon">+</span> Targets
+                    </h3>
+                    <div class="section-content collapsed" id="section-targets">
+                        <div class="form-group">
+                            <label>Enable Target Generation</label>
+                            <input type="checkbox" id="targets-enabled">
+                        </div>
+                        <div id="targets-config" style="display:none;">
+                            <div class="form-group">
+                                <label>Asset Symbol</label>
+                                <input type="text" id="target-asset" placeholder="e.g., BTC">
+                            </div>
+                            <div class="form-group">
+                                <label>Config File (optional .md)</label>
+                                <input type="text" id="targets-config-file" placeholder="targets.md">
+                            </div>
+                            <div class="form-group">
+                                <label>Target Function</label>
+                                <select id="target-function-select">
+                                    <option value="">Select...</option>
+                                    <option value="gen_perfect_signal_class">Perfect Signal Class</option>
+                                    <option value="gen_perfect_stoploss_signal_class">Stop Loss Signal</option>
+                                </select>
+                            </div>
+                            <div id="target-params-container">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>N Periods</label>
+                                        <input type="number" id="target-n-periods" value="60">
+                                    </div>
+                                </div>
+                            </div>
+                            <button id="btn-add-target" class="btn btn-sm">Add Target</button>
+                            <div id="targets-list" class="items-list"></div>
                         </div>
                     </div>
                 </div>
@@ -339,6 +481,17 @@
                             <div class="form-group">
                                 <label>Model ID</label>
                                 <input type="text" id="model-id" value="model_001">
+                            </div>
+                        </div>
+                        <hr style="margin: 10px 0; border-color: #333;">
+                        <div class="form-group">
+                            <label>Run FittingJudge Evaluation</label>
+                            <input type="checkbox" id="judge-enabled" checked>
+                        </div>
+                        <div id="judge-options">
+                            <div class="form-group">
+                                <label>Generate AI Analysis Prompt</label>
+                                <input type="checkbox" id="judge-generate-prompt">
                             </div>
                         </div>
                     </div>

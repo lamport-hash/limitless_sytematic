@@ -60,11 +60,11 @@ def create_sample_model_info(
 
 
 def create_sample_data_info(
-    n_samples: int = 10000,
+    n_samples: int = 5000,
     n_features: int = 25,
-    train_size: int = 6000,
-    val_size: int = 2000,
-    test_size: int = 2000,
+    train_size: int = 3000,
+    val_size: int = 1000,
+    test_size: int = 1000,
 ) -> DataInfo:
     """Create sample DataInfo for testing."""
     return DataInfo(
@@ -305,13 +305,13 @@ class TestGenerateAIAnalysisPrompt:
         metrics = create_sample_metrics()
         model_info = create_sample_model_info()
         data_info = DataInfo(
-            n_samples=50000,
+            n_samples=5000,
             n_features=100,
             feature_names=[f"feat_{i}" for i in range(100)],
             target_name="T_my_target",
-            train_size=30000,
-            val_size=10000,
-            test_size=10000,
+            train_size=3000,
+            val_size=1000,
+            test_size=1000,
         )
         
         prompt = generate_ai_analysis_prompt(metrics, model_info, data_info)

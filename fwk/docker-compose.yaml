@@ -8,6 +8,6 @@ services:
     volumes:
       - .:/app
       - ${HOME}/.cache:/root/.cache
-      - ${HOME}/sing/limitless_sytematic/data:/app/data
+      - ${HOME}/limitless_sytematic/data:/app/data
     environment:
       - JUPYTER_ENABLE_LAB=yes

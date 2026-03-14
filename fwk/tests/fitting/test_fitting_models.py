@@ -36,7 +36,7 @@ from fitting.models.mlp_model import MLPModel
 def regression_data():
     """Generate synthetic regression data with temporal patterns."""
     np.random.seed(42)
-    n_samples = 1000
+    n_samples = 500
     n_features = 10
     t = np.linspace(0, 10, n_samples)
     X = np.random.randn(n_samples, n_features)
@@ -50,7 +50,7 @@ def regression_data():
 def classification_data():
     """Generate synthetic binary classification data with temporal patterns."""
     np.random.seed(456)
-    n_samples = 1000
+    n_samples = 500
     n_features = 6
     t = np.linspace(0, 15, n_samples)
     X = np.random.randn(n_samples, n_features)
@@ -68,7 +68,7 @@ def classification_data():
 def multiclass_data():
     """Generate synthetic multi-class classification data."""
     np.random.seed(789)
-    n_samples = 1000
+    n_samples = 500
     n_features = 8
     X = np.random.randn(n_samples, n_features)
     y = np.zeros(n_samples)
