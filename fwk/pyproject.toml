@@ -25,6 +25,14 @@ dependencies = [
     "backtesting",
     "yfinance",
     "ruamel.yaml",
+    "seaborn",
+    "plotly",
+    "fastparquet",
+    "scipy",
+    "optuna",
+    "loguru",
+    "sphinx",
+    "sphinx-rtd-theme",
 ]
 
 [project.optional-dependencies]

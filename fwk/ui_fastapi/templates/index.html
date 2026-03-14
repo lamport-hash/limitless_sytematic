@@ -13,7 +13,11 @@
     <div class="container">
         <header>
             <h1>Fitting API UI</h1>
-            <div class="header-actions">
+            <div class="tab-nav">
+                <button class="tab-btn active" data-tab="bundle">Bundle Builder</button>
+                <button class="tab-btn" data-tab="fitting">Fitting</button>
+            </div>
+            <div class="header-actions" id="header-actions">
                 <button id="btn-generate" class="btn btn-primary">Generate Script</button>
                 <button id="btn-run" class="btn btn-success">Run</button>
                 <button id="btn-stop" class="btn btn-danger" disabled>Stop</button>
@@ -22,93 +26,14 @@
         </header>
 
         <main class="split-panel">
-            <aside class="left-panel">
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="dispatch">
-                        <span class="toggle-icon">-</span> Dispatch
-                    </h3>
-                    <div class="section-content" id="section-dispatch">
-                        <div class="form-group">
-                            <label>Run Mode</label>
-                            <select id="run-mode">
-                                <option value="local">Local (this machine)</option>
-                                <option value="manager">Manager (auto dispatch)</option>
-                                <option value="manual">Manual (select worker)</option>
-                            </select>
-                        </div>
-                        <div id="dispatch-job-name" style="display:none;">
-                            <div class="form-group">
-                                <label>Job Name</label>
-                                <input type="text" id="job-name" placeholder="training_run_001">
-                            </div>
-                        </div>
-                        <div id="dispatch-priority" style="display:none;">
-                            <div class="form-group">
-                                <label>Priority</label>
-                                <select id="job-priority">
-                                    <option value="normal">Normal</option>
-                                    <option value="low">Low</option>
-                                    <option value="high">High</option>
-                                    <option value="urgent">Urgent</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="worker-select" style="display:none;">
-                            <div class="form-group">
-                                <label>Target Worker</label>
-                                <select id="target-worker"></select>
-                            </div>
-                        </div>
-                        <div id="manager-link" style="display:none;">
-                            <a href="http://localhost:8888" target="_blank" class="manager-link">Open Manager UI</a>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="data-source">
-                        <span class="toggle-icon">-</span> Data Source
-                    </h3>
-                    <div class="section-content" id="section-data-source">
-                        <div class="form-group">
-                            <label>Source Type</label>
-                            <select id="source-type">
-                                <option value="synthetic">Synthetic Data</option>
-                                <option value="file">Local File</option>
-                                <option value="normalized">Normalized Data (Search)</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Synthetic options -->
-                        <div id="synthetic-options">
-                            <div class="form-group">
-                                <label>Samples</label>
-                                <input type="number" id="synthetic-samples" value="1000" min="100">
-                            </div>
-                            <div class="form-group">
-                                <label>Features</label>
-                                <input type="number" id="synthetic-features" value="10" min="1">
-                            </div>
-                        </div>
-                        
-                        <!-- Local file options -->
-                        <div id="file-options" style="display:none;">
-                            <div class="form-group">
-                                <label>Data File</label>
-                                <select id="data-file"></select>
-                            </div>
-                            <div class="form-group">
-                                <label>Target Column</label>
-                                <input type="text" id="target-column" value="target">
-                            </div>
-                            <div class="form-group">
-                                <label>Feature Columns (comma-separated)</label>
-                                <input type="text" id="feature-columns" placeholder="Leave empty for all except target">
-                            </div>
-                        </div>
-                        
-                        <!-- Normalized data options -->
-                        <div id="normalized-options" style="display:none;">
+            <!-- Bundle Builder Tab -->
+            <div class="tab-content active" id="tab-bundle">
+                <aside class="left-panel">
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="data-search">
+                            <span class="toggle-icon">-</span> Search Normalized Data
+                        </h3>
+                        <div class="section-content" id="section-data-search">
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Frequency</label>
@@ -150,368 +75,389 @@
                             </div>
                             <div class="form-group">
                                 <button id="btn-search-data" class="btn btn-sm">Search</button>
-                                <span id="search-status"></span>
-                            </div>
-                            <div class="form-group">
-                                <label>Select File</label>
-                                <select id="norm-file-select">
-                                    <option value="">-- Search first --</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Target Column</label>
-                                <input type="text" id="norm-target-column" value="target">
+                                <span id="search-status" class="status-text"></span>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- NEW: Features section -->
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="features">
-                        <span class="toggle-icon">+</span> Features
-                    </h3>
-                    <div class="section-content collapsed" id="section-features">
-                        <div class="form-group">
-                            <label>Enable Feature Building</label>
-                            <input type="checkbox" id="features-enabled">
-                        </div>
-                        <div id="features-config" style="display:none;">
-                            <div class="form-group">
-                                <label>Config File (optional .md)</label>
-                                <input type="text" id="features-config-file" placeholder="features.md">
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="selected-data">
+                            <span class="toggle-icon">-</span> Selected Data Files (<span id="selected-data-count">0</span>)
+                        </h3>
+                        <div class="section-content" id="section-selected-data">
+                            <div id="selected-data-list" class="items-list"></div>
+                            <div class="form-group" style="margin-top:10px;">
+                                <button id="btn-clear-data" class="btn btn-sm btn-secondary">Clear Selection</button>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="features">
+                            <span class="toggle-icon">-</span> Features
+                        </h3>
+                        <div class="section-content" id="section-features">
                             <div class="form-group">
-                                <label>Add Feature</label>
+                                <label>Feature Type</label>
                                 <div class="form-row">
                                     <select id="feature-type-select" style="flex:2">
                                         <option value="">Select type...</option>
                                     </select>
-                                </div>
-                                <div class="form-row" style="margin-top:5px">
-                                    <input type="text" id="feature-periods" placeholder="Periods (comma-sep)" style="flex:2">
+                                    <input type="text" id="feature-periods" placeholder="Periods (comma-sep)" style="flex:1">
                                     <button id="btn-add-feature" class="btn btn-sm" style="flex:0.5">+</button>
                                 </div>
                             </div>
                             <div id="features-list" class="items-list"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- NEW: Targets section -->
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="targets">
-                        <span class="toggle-icon">+</span> Targets
-                    </h3>
-                    <div class="section-content collapsed" id="section-targets">
-                        <div class="form-group">
-                            <label>Enable Target Generation</label>
-                            <input type="checkbox" id="targets-enabled">
-                        </div>
-                        <div id="targets-config" style="display:none;">
-                            <div class="form-group">
-                                <label>Asset Symbol</label>
-                                <input type="text" id="target-asset" placeholder="e.g., BTC">
-                            </div>
-                            <div class="form-group">
-                                <label>Config File (optional .md)</label>
-                                <input type="text" id="targets-config-file" placeholder="targets.md">
-                            </div>
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="targets">
+                            <span class="toggle-icon">-</span> Targets
+                        </h3>
+                        <div class="section-content" id="section-targets">
                             <div class="form-group">
                                 <label>Target Function</label>
                                 <select id="target-function-select">
-                                    <option value="">Select...</option>
-                                    <option value="gen_perfect_signal_class">Perfect Signal Class</option>
-                                    <option value="gen_perfect_stoploss_signal_class">Stop Loss Signal</option>
+                                    <option value="">Select function...</option>
                                 </select>
                             </div>
-                            <div id="target-params-container">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>N Periods</label>
-                                        <input type="number" id="target-n-periods" value="60">
-                                    </div>
-                                </div>
+                            <div class="form-group">
+                                <label>N Periods</label>
+                                <input type="number" id="target-n-periods" value="60">
                             </div>
-                            <button id="btn-add-target" class="btn btn-sm">Add Target</button>
+                            <div class="form-group">
+                                <button id="btn-add-target" class="btn btn-sm">Add Target</button>
+                            </div>
                             <div id="targets-list" class="items-list"></div>
                         </div>
                     </div>
-                </div>
 
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="task-model">
-                        <span class="toggle-icon">-</span> Task & Model
-                    </h3>
-                    <div class="section-content" id="section-task-model">
-                        <div class="form-group">
-                            <label>Task Type</label>
-                            <select id="task-type">
-                                <option value="regression">Regression</option>
-                                <option value="classification">Classification</option>
-                            </select>
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="bundle-config">
+                            <span class="toggle-icon">-</span> Bundle Configuration
+                        </h3>
+                        <div class="section-content" id="section-bundle-config">
+                            <div class="form-group">
+                                <label>Bundle Name</label>
+                                <input type="text" id="bundle-name" placeholder="my_bundle">
+                            </div>
+                            <div class="form-group">
+                                <button id="btn-build-bundle" class="btn btn-primary">Build Bundle</button>
+                                <span id="build-status" class="status-text"></span>
+                            </div>
+                            <div class="form-group">
+                                <button id="btn-send-to-fitting" class="btn btn-success" disabled>Send to Fitting</button>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Model Type</label>
-                            <select id="model-type">
-                                <option value="xgb">XGBoost</option>
-                                <option value="rf_sk">Random Forest</option>
-                                <option value="dt_sk">Decision Tree</option>
-                                <option value="mlp_torch">MLP (PyTorch)</option>
-                                <option value="bnn_gauto">AutoBNN</option>
-                            </select>
-                        </div>
-                        <div id="model-params-container"></div>
+                    </div>
+                </aside>
+
+                <div class="right-panel">
+                    <div class="script-header">
+                        <h3>Search Results</h3>
+                    </div>
+                    <div class="results-container">
+                        <table id="search-results-table">
+                            <thead>
+                                <tr>
+                                    <th>Instrument</th>
+                                    <th>Freq</th>
+                                    <th>Source</th>
+                                    <th>Product</th>
+                                    <th>Path</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="output-header">
+                        <h3>Bundle Build Log</h3>
+                    </div>
+                    <div class="output-container">
+                        <pre id="bundle-build-log">Ready to build...</pre>
                     </div>
                 </div>
+            </div>
 
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="training">
-                        <span class="toggle-icon">-</span> Training Config
-                    </h3>
-                    <div class="section-content" id="section-training">
-                        <div class="form-group">
-                            <label>Split Mode</label>
-                            <select id="split-mode">
-                                <option value="train_val_test">Train/Val/Test</option>
-                                <option value="periodic_retrain">Periodic Retrain</option>
-                            </select>
-                        </div>
-                        <div class="form-row">
+            <!-- Fitting Tab -->
+            <div class="tab-content" id="tab-fitting">
+                <aside class="left-panel">
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="data-source">
+                            <span class="toggle-icon">-</span> Data Source
+                        </h3>
+                        <div class="section-content" id="section-data-source">
                             <div class="form-group">
-                                <label>Train Ratio</label>
-                                <input type="number" id="train-ratio" value="0.6" step="0.1" min="0.1" max="0.9">
-                            </div>
-                            <div class="form-group">
-                                <label>Val Ratio</label>
-                                <input type="number" id="val-ratio" value="0.2" step="0.1" min="0.1" max="0.9">
-                            </div>
-                        </div>
-                        <div id="retrain-options" style="display:none;">
-                            <div class="form-group">
-                                <label>Retrain Period</label>
-                                <input type="number" id="retrain-period" value="100" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label>Retrain Mode</label>
-                                <select id="retrain-mode">
-                                    <option value="expanding">Expanding</option>
-                                    <option value="sliding">Sliding</option>
+                                <label>Source Type</label>
+                                <select id="source-type">
+                                    <option value="bundle">Existing Bundle</option>
+                                    <option value="synthetic">Synthetic Data</option>
+                                    <option value="file">Local File</option>
                                 </select>
                             </div>
-                            <div id="sliding-options" style="display:none;">
+                            
+                            <div id="bundle-options">
                                 <div class="form-group">
-                                    <label>Sliding Window Size</label>
-                                    <input type="number" id="sliding-window" value="500" min="1">
+                                    <label>Select Bundle</label>
+                                    <select id="bundle-select">
+                                        <option value="">-- Select bundle --</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div id="synthetic-options" style="display:none;">
+                                <div class="form-group">
+                                    <label>Samples</label>
+                                    <input type="number" id="synthetic-samples" value="1000" min="100">
+                                </div>
+                                <div class="form-group">
+                                    <label>Features</label>
+                                    <input type="number" id="synthetic-features" value="10" min="1">
+                                </div>
+                            </div>
+                            
+                            <div id="file-options" style="display:none;">
+                                <div class="form-group">
+                                    <label>Data File</label>
+                                    <select id="data-file"></select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Target Column</label>
+                                    <input type="text" id="target-column" value="target">
                                 </div>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Normalization</label>
-                            <select id="normalization">
-                                <option value="standardize">Standardize</option>
-                                <option value="minmax">MinMax</option>
-                                <option value="none">None</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Normalize Targets</label>
-                            <input type="checkbox" id="normalize-targets">
-                        </div>
                     </div>
-                </div>
 
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="metrics">
-                        <span class="toggle-icon">-</span> Metrics
-                    </h3>
-                    <div class="section-content" id="section-metrics">
-                        <div class="form-group">
-                            <label>Primary Metric</label>
-                            <select id="primary-metric"></select>
-                        </div>
-                        <div id="averaging-group" style="display:none;">
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="task-model">
+                            <span class="toggle-icon">-</span> Task & Model
+                        </h3>
+                        <div class="section-content" id="section-task-model">
                             <div class="form-group">
-                                <label>Averaging</label>
-                                <select id="averaging">
-                                    <option value="macro">Macro</option>
-                                    <option value="micro">Micro</option>
-                                    <option value="weighted">Weighted</option>
-                                    <option value="binary">Binary</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="hyperparameter">
-                        <span class="toggle-icon">+</span> Hyperparameter Tuning
-                    </h3>
-                    <div class="section-content collapsed" id="section-hyperparameter">
-                        <div class="form-group">
-                            <label>Enable</label>
-                            <input type="checkbox" id="hp-enabled">
-                        </div>
-                        <div id="hp-options" style="display:none;">
-                            <div class="form-group">
-                                <label>Strategy</label>
-                                <select id="hp-strategy">
-                                    <option value="random">Random</option>
-                                    <option value="grid">Grid</option>
+                                <label>Task Type</label>
+                                <select id="task-type">
+                                    <option value="regression">Regression</option>
+                                    <option value="classification">Classification</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>N Samples (Random)</label>
-                                <input type="number" id="hp-samples" value="10" min="1">
+                                <label>Model Type</label>
+                                <select id="model-type">
+                                    <option value="xgb">XGBoost</option>
+                                    <option value="rf_sk">Random Forest</option>
+                                    <option value="dt_sk">Decision Tree</option>
+                                    <option value="mlp_torch">MLP (PyTorch)</option>
+                                    <option value="bnn_gauto">AutoBNN</option>
+                                </select>
                             </div>
+                            <div id="model-params-container"></div>
                         </div>
                     </div>
-                </div>
 
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="feature-selection">
-                        <span class="toggle-icon">+</span> Feature Selection
-                    </h3>
-                    <div class="section-content collapsed" id="section-feature-selection">
-                        <div class="form-group">
-                            <label>Enable</label>
-                            <input type="checkbox" id="fs-enabled">
-                        </div>
-                        <div id="fs-options" style="display:none;">
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="training">
+                            <span class="toggle-icon">-</span> Training Config
+                        </h3>
+                        <div class="section-content" id="section-training">
                             <div class="form-group">
-                                <label>Method</label>
-                                <select id="fs-method">
-                                    <option value="greedy_rfe">Greedy RFE</option>
-                                    <option value="greedy_clever">Greedy Clever</option>
-                                    <option value="exhaustive">Exhaustive</option>
+                                <label>Split Mode</label>
+                                <select id="split-mode">
+                                    <option value="train_val_test">Train/Val/Test</option>
+                                    <option value="periodic_retrain">Periodic Retrain</option>
                                 </select>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>Max Features</label>
-                                    <input type="number" id="fs-max" value="100" min="1">
+                                    <label>Train Ratio</label>
+                                    <input type="number" id="train-ratio" value="0.6" step="0.1" min="0.1" max="0.9">
                                 </div>
                                 <div class="form-group">
-                                    <label>Min Features</label>
-                                    <input type="number" id="fs-min" value="10" min="1">
+                                    <label>Val Ratio</label>
+                                    <input type="number" id="val-ratio" value="0.2" step="0.1" min="0.1" max="0.9">
                                 </div>
                             </div>
-                            <div id="fs-clever-options" style="display:none;">
-                                <div class="form-row">
+                            <div id="retrain-options" style="display:none;">
+                                <div class="form-group">
+                                    <label>Retrain Period</label>
+                                    <input type="number" id="retrain-period" value="100" min="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Retrain Mode</label>
+                                    <select id="retrain-mode">
+                                        <option value="expanding">Expanding</option>
+                                        <option value="sliding">Sliding</option>
+                                    </select>
+                                </div>
+                                <div id="sliding-options" style="display:none;">
                                     <div class="form-group">
-                                        <label>P (batches)</label>
-                                        <input type="number" id="fs-clever-p" value="10" min="1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>N (per batch)</label>
-                                        <input type="number" id="fs-clever-n" value="50" min="1">
+                                        <label>Sliding Window Size</label>
+                                        <input type="number" id="sliding-window" value="500" min="1">
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="feature-bundling">
-                        <span class="toggle-icon">+</span> Feature Bundling
-                    </h3>
-                    <div class="section-content collapsed" id="section-feature-bundling">
-                        <div class="form-group">
-                            <label>Lag Features</label>
-                            <input type="checkbox" id="bundle-lag">
-                        </div>
-                        <div id="lag-options" style="display:none;">
                             <div class="form-group">
-                                <label>Lags (comma-separated)</label>
-                                <input type="text" id="lag-values" value="1,2,3">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Rolling Features</label>
-                            <input type="checkbox" id="bundle-rolling">
-                        </div>
-                        <div id="rolling-options" style="display:none;">
-                            <div class="form-group">
-                                <label>Windows (comma-separated)</label>
-                                <input type="text" id="rolling-windows" value="5,10">
-                            </div>
-                            <div class="form-group">
-                                <label>Operations</label>
-                                <select id="rolling-ops" multiple>
-                                    <option value="mean" selected>mean</option>
-                                    <option value="std" selected>std</option>
-                                    <option value="min">min</option>
-                                    <option value="max">max</option>
+                                <label>Normalization</label>
+                                <select id="normalization">
+                                    <option value="standardize">Standardize</option>
+                                    <option value="minmax">MinMax</option>
+                                    <option value="none">None</option>
                                 </select>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Interaction Features</label>
-                            <input type="checkbox" id="bundle-interaction">
-                        </div>
-                        <div id="interaction-options" style="display:none;">
                             <div class="form-group">
-                                <label>Max Interactions</label>
-                                <input type="number" id="interaction-max" value="2" min="1">
+                                <label>Normalize Targets</label>
+                                <input type="checkbox" id="normalize-targets">
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="panel-section">
-                    <h3 class="section-header" data-section="output">
-                        <span class="toggle-icon">+</span> Output
-                    </h3>
-                    <div class="section-content collapsed" id="section-output">
-                        <div class="form-group">
-                            <label>Verbose</label>
-                            <input type="checkbox" id="verbose" checked>
-                        </div>
-                        <div class="form-group">
-                            <label>Save Model</label>
-                            <input type="checkbox" id="save-model">
-                        </div>
-                        <div id="save-options" style="display:none;">
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="metrics">
+                            <span class="toggle-icon">-</span> Metrics
+                        </h3>
+                        <div class="section-content" id="section-metrics">
                             <div class="form-group">
-                                <label>Save Path</label>
-                                <input type="text" id="save-path" value="./output">
+                                <label>Primary Metric</label>
+                                <select id="primary-metric"></select>
                             </div>
-                            <div class="form-group">
-                                <label>Model ID</label>
-                                <input type="text" id="model-id" value="model_001">
-                            </div>
-                        </div>
-                        <hr style="margin: 10px 0; border-color: #333;">
-                        <div class="form-group">
-                            <label>Run FittingJudge Evaluation</label>
-                            <input type="checkbox" id="judge-enabled" checked>
-                        </div>
-                        <div id="judge-options">
-                            <div class="form-group">
-                                <label>Generate AI Analysis Prompt</label>
-                                <input type="checkbox" id="judge-generate-prompt">
+                            <div id="averaging-group" style="display:none;">
+                                <div class="form-group">
+                                    <label>Averaging</label>
+                                    <select id="averaging">
+                                        <option value="macro">Macro</option>
+                                        <option value="micro">Micro</option>
+                                        <option value="weighted">Weighted</option>
+                                        <option value="binary">Binary</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </aside>
 
-            <div class="right-panel">
-                <div class="script-header">
-                    <h3>Generated Script</h3>
-                    <span id="script-status"></span>
-                </div>
-                <div class="script-container">
-                    <pre><code class="language-python" id="script-content"># Click "Generate Script" to see the output</code></pre>
-                </div>
-                <div class="output-header">
-                    <h3>Output</h3>
-                    <button id="btn-clear-output" class="btn btn-sm">Clear</button>
-                </div>
-                <div class="output-container">
-                    <pre id="output-content">Ready to run...</pre>
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="hyperparameter">
+                            <span class="toggle-icon">+</span> Hyperparameter Tuning
+                        </h3>
+                        <div class="section-content collapsed" id="section-hyperparameter">
+                            <div class="form-group">
+                                <label>Enable</label>
+                                <input type="checkbox" id="hp-enabled">
+                            </div>
+                            <div id="hp-options" style="display:none;">
+                                <div class="form-group">
+                                    <label>Strategy</label>
+                                    <select id="hp-strategy">
+                                        <option value="random">Random</option>
+                                        <option value="grid">Grid</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>N Samples</label>
+                                    <input type="number" id="hp-samples" value="10" min="1">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="feature-selection">
+                            <span class="toggle-icon">+</span> Feature Selection
+                        </h3>
+                        <div class="section-content collapsed" id="section-feature-selection">
+                            <div class="form-group">
+                                <label>Enable</label>
+                                <input type="checkbox" id="fs-enabled">
+                            </div>
+                            <div id="fs-options" style="display:none;">
+                                <div class="form-group">
+                                    <label>Method</label>
+                                    <select id="fs-method">
+                                        <option value="greedy_rfe">Greedy RFE</option>
+                                        <option value="greedy_clever">Greedy Clever</option>
+                                        <option value="exhaustive">Exhaustive</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Max Features</label>
+                                        <input type="number" id="fs-max" value="100" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Min Features</label>
+                                        <input type="number" id="fs-min" value="10" min="1">
+                                    </div>
+                                </div>
+                                <div id="fs-clever-options" style="display:none;">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>P (batches)</label>
+                                            <input type="number" id="fs-clever-p" value="10" min="1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>N (per batch)</label>
+                                            <input type="number" id="fs-clever-n" value="50" min="1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-section">
+                        <h3 class="section-header" data-section="output">
+                            <span class="toggle-icon">+</span> Output
+                        </h3>
+                        <div class="section-content collapsed" id="section-output">
+                            <div class="form-group">
+                                <label>Verbose</label>
+                                <input type="checkbox" id="verbose" checked>
+                            </div>
+                            <div class="form-group">
+                                <label>Save Model</label>
+                                <input type="checkbox" id="save-model">
+                            </div>
+                            <div id="save-options" style="display:none;">
+                                <div class="form-group">
+                                    <label>Save Path</label>
+                                    <input type="text" id="save-path" value="./output">
+                                </div>
+                                <div class="form-group">
+                                    <label>Model ID</label>
+                                    <input type="text" id="model-id" value="model_001">
+                                </div>
+                            </div>
+                            <hr style="margin: 10px 0; border-color: #333;">
+                            <div class="form-group">
+                                <label>Run FittingJudge</label>
+                                <input type="checkbox" id="judge-enabled" checked>
+                            </div>
+                            <div id="judge-options">
+                                <div class="form-group">
+                                    <label>Generate AI Prompt</label>
+                                    <input type="checkbox" id="judge-generate-prompt">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="right-panel">
+                    <div class="script-header">
+                        <h3>Generated Script</h3>
+                        <span id="script-status"></span>
+                    </div>
+                    <div class="script-container">
+                        <pre><code class="language-python" id="script-content"># Click "Generate Script" to see the output</code></pre>
+                    </div>
+                    <div class="output-header">
+                        <h3>Output</h3>
+                        <button id="btn-clear-output" class="btn btn-sm">Clear</button>
+                    </div>
+                    <div class="output-container">
+                        <pre id="output-content">Ready to run...</pre>
+                    </div>
                 </div>
             </div>
         </main>
