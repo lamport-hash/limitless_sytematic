@@ -1,0 +1,61 @@
+{
+  "1h": {
+    "sma": {
+      "best_return": 0.9911756138708236,
+      "best_params": {
+        "long_window": 4032,
+        "threshold": 0.005,
+        "min_length": 288,
+        "min_intensity": 0.15,
+        "prefix": "sma_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.504954639323413,
+        "max_drawdown": -0.11328567274289134,
+        "win_rate": 0.3807600239377618
+      }
+    },
+    "zigzag": {
+      "best_return": 0.26452793503779604,
+      "best_params": {
+        "threshold": 0.03,
+        "min_length": 1152,
+        "prefix": "zigzag_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.1537714247574765,
+        "max_drawdown": -0.2371685786551413,
+        "win_rate": 0.4865350089766607
+      }
+    },
+    "regression": {
+      "best_return": 1.1318295617258243,
+      "best_params": {
+        "window": 1152,
+        "slope_threshold": 0.0005,
+        "r2_threshold": 0.2,
+        "min_length": 288,
+        "prefix": "regression_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.435746460896874,
+        "max_drawdown": -0.15363331011257114,
+        "win_rate": 0.4809994015559545
+      }
+    },
+    "directional": {
+      "best_return": 0.3494365114818223,
+      "best_params": {
+        "lookback": 288,
+        "min_same_direction": 0.55,
+        "min_length": 288,
+        "prefix": "directional_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.47533876061478825,
+        "max_drawdown": -0.043199257154532135,
+        "win_rate": 0.3307151406343507
+      }
+    }
+  }
+}

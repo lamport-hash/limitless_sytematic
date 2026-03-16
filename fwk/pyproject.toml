@@ -56,7 +56,7 @@ dev-dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "features*", "strat*", "backtest*", "fitting*"]
+include = ["core*", "features*", "strat*", "backtest*", "fitting*", "norm*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

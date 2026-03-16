@@ -369,8 +369,8 @@ def add_regression_trends(
         trend_info = {
             'trend_id': trend_counter,
             'direction': regime,
-            'start_date': df.index[start_idx],
-            'end_date': df.index[end_idx],
+            'start_date': start_idx,
+            'end_date': end_idx,
             'length': len(group),
             'total_return': total_return,
             'intensity': total_return,
@@ -385,7 +385,7 @@ def add_regression_trends(
         df.loc[start_idx:end_idx, f'target_{prefix}_trend_length'] = len(group)
         
         if use_volume and volume_col in df.columns:
-            vol_slice = df[volume_col].iloc[start_idx:end_idx+1]
+            vol_slice = df[volume_col].loc[start_idx:end_idx]
             avg_vol = vol_slice.mean()
             overall_avg_vol = df[volume_col].mean()
             volume_ratio = avg_vol / overall_avg_vol if overall_avg_vol else 1.0
@@ -492,8 +492,8 @@ def add_directional_trends(
         trend_info = {
             'trend_id': trend_counter,
             'direction': regime,
-            'start_date': df.index[start_idx],
-            'end_date': df.index[end_idx],
+            'start_date': start_idx,
+            'end_date': end_idx,
             'length': len(group),
             'total_return': total_return,
             'intensity': total_return,
@@ -508,7 +508,7 @@ def add_directional_trends(
         df.loc[start_idx:end_idx, f'target_{prefix}_trend_length'] = len(group)
         
         if use_volume and volume_col in df.columns:
-            vol_slice = df[volume_col].iloc[start_idx:end_idx+1]
+            vol_slice = df[volume_col].loc[start_idx:end_idx]
             avg_vol = vol_slice.mean()
             overall_avg_vol = df[volume_col].mean()
             volume_ratio = avg_vol / overall_avg_vol if overall_avg_vol else 1.0

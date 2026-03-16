@@ -11,12 +11,12 @@ from typing import List
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
 from merger.merger_utils import merge_multiple_dataframes_from_parquet
-from core.data_org import BUNDLE_DIR, get_normalised_instrument_dir, MktDataFred, ExchangeNAME, ProductType
+from core.data_org import BUNDLE_DIR, get_normalised_instrument_dir, MktDataTFreq, ExchangeNAME, ProductType
 from core.enums import g_index_col
 from norm.norm_utils import load_normalized_df
 
 
-DATA_FREQ = MktDataFred.CANDLE_1HOUR
+DATA_FREQ = MktDataTFreq.CANDLE_1HOUR
 SOURCE = ExchangeNAME.FIRSTRATE
 PRODUCT_TYPE = ProductType.ETF
 

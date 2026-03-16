@@ -13,7 +13,7 @@ from core.data_org import (
     ProductType,
 )
 from core.enums import (
-    MktDataFred,
+    MktDataTFreq,
     ExchangeNAME,
     g_index_col,
     g_open_col,
@@ -42,14 +42,14 @@ def test_normalize_firstrate_file():
 
     input_file = get_import_file(ExchangeNAME.FIRSTRATE, symbol, subtype)
     output_file = get_normalised_file(
-        MktDataFred.CANDLE_1HOUR,
+        MktDataTFreq.CANDLE_1HOUR,
         ExchangeNAME.FIRSTRATE,
         ProductType.ETF,
         symbol,
     )
 
     create_normalised_dirs(
-        MktDataFred.CANDLE_1HOUR,
+        MktDataTFreq.CANDLE_1HOUR,
         ExchangeNAME.FIRSTRATE,
         ProductType.ETF,
         symbol,

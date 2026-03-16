@@ -19,7 +19,7 @@ Directory Tree:
         │   │   │       └── *.df.parquet  # Format: <instrument>_<start>_<end>_<freq>.df.parquet
 
 Enums used:
-    - MktDataFred: CANDLE_1MIN, CANDLE_1HOUR
+    - MktDataTFreq: CANDLE_1MIN, CANDLE_1HOUR
     - MktDataType: ORDERBOOK, TRADE, CANDLE, CANDLE_BINANCE
     - ExchangeNAME: BINANCE, FIRSTRATE, UNDEFINED
     - ConnectorTYPE: CCXT_WS, CCXT_REST, etc.
@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Optional, Tuple, List
 from enum import Enum
 
-from core.enums import MktDataFred, ExchangeNAME
+from core.enums import MktDataTFreq, ExchangeNAME
 
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -123,26 +123,26 @@ def get_import_file(
 
 
 def get_normalised_data_freq_dir(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
 ) -> Path:
     """
     Get the normalised directory for a specific data frequency.
 
     Args:
-        p_data_freq: Data frequency enum (e.g., MktDataFred.CANDLE_1MIN).
+        p_data_freq: Data frequency enum (e.g., MktDataTFreq.CANDLE_1MIN).
 
     Returns:
         Path to the data frequency directory.
 
     Examples:
-        >>> get_normalised_data_freq_dir(MktDataFred.CANDLE_1HOUR)
+        >>> get_normalised_data_freq_dir(MktDataTFreq.CANDLE_1HOUR)
         Path('/home/brian/sing/data/normalised/candle_1hour')
     """
     return NORMALISED_DIR / p_data_freq.value
 
 
 def get_normalised_source_dir(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
     p_source: ExchangeNAME,
     p_exchange: Optional[ExchangeNAME] = None,
 ) -> Path:
@@ -160,10 +160,10 @@ def get_normalised_source_dir(
         Path to the source normalised directory.
 
     Examples:
-        >>> get_normalised_source_dir(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE)
+        >>> get_normalised_source_dir(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE)
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined')
 
-        >>> get_normalised_source_dir(MktDataFred.CANDLE_1MIN, ExchangeNAME.BINANCE, ExchangeNAME.BINANCE)
+        >>> get_normalised_source_dir(MktDataTFreq.CANDLE_1MIN, ExchangeNAME.BINANCE, ExchangeNAME.BINANCE)
         Path('/home/brian/sing/data/normalised/candle_1min/binance_binance')
     """
     data_freq_dir = get_normalised_data_freq_dir(p_data_freq)
@@ -179,7 +179,7 @@ def get_normalised_source_dir(
 
 
 def get_normalised_product_dir(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
     p_source: ExchangeNAME,
     p_product_type: ProductType,
     p_exchange: Optional[ExchangeNAME] = None,
@@ -197,7 +197,7 @@ def get_normalised_product_dir(
         Path to the product normalised directory.
 
     Examples:
-        >>> get_normalised_product_dir(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF)
+        >>> get_normalised_product_dir(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF)
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf')
     """
     source_dir = get_normalised_source_dir(p_data_freq, p_source, p_exchange)
@@ -205,7 +205,7 @@ def get_normalised_product_dir(
 
 
 def get_normalised_instrument_dir(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
     p_source: ExchangeNAME,
     p_product_type: ProductType,
     p_instrument: str,
@@ -225,7 +225,7 @@ def get_normalised_instrument_dir(
         Path to the instrument normalised directory.
 
     Examples:
-        >>> get_normalised_instrument_dir(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
+        >>> get_normalised_instrument_dir(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/AAA')
     """
     product_dir = get_normalised_product_dir(p_data_freq, p_source, p_product_type, p_exchange)
@@ -233,7 +233,7 @@ def get_normalised_instrument_dir(
 
 
 def get_normalised_file(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
     p_source: ExchangeNAME,
     p_product_type: ProductType,
     p_instrument: str,
@@ -259,10 +259,10 @@ def get_normalised_file(
         Path to the normalised parquet file.
 
     Examples:
-        >>> get_normalised_file(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
+        >>> get_normalised_file(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/AAA/AAA_*_*_candle_1hour.df.parquet')
 
-        >>> get_normalised_file(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA", "20200101", "20201231")
+        >>> get_normalised_file(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA", "20200101", "20201231")
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/AAA/AAA_20200101_20201231_candle_1hour.df.parquet')
     """
     instrument_dir = get_normalised_instrument_dir(
@@ -279,7 +279,7 @@ def get_normalised_file(
 
 
 def list_instruments(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
     p_source: ExchangeNAME,
     p_product_type: ProductType,
     p_exchange: Optional[ExchangeNAME] = None,
@@ -297,7 +297,7 @@ def list_instruments(
         List of instrument symbols.
 
     Examples:
-        >>> list_instruments(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF)
+        >>> list_instruments(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF)
         ['AAA', 'AAAU', 'AADR', ...]
     """
     product_dir = get_normalised_product_dir(p_data_freq, p_source, p_product_type, p_exchange)
@@ -314,7 +314,7 @@ def list_instruments(
 
 
 def create_normalised_dirs(
-    p_data_freq: MktDataFred,
+    p_data_freq: MktDataTFreq,
     p_source: ExchangeNAME,
     p_product_type: ProductType,
     p_instrument: str,
@@ -334,7 +334,7 @@ def create_normalised_dirs(
         Path to the instrument directory that was created.
 
     Examples:
-        >>> create_normalised_dirs(MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
+        >>> create_normalised_dirs(MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "AAA")
         Path('/home/brian/sing/data/normalised/candle_1hour/firstrate_undefined/etf/AAA')
     """
     instrument_dir = get_normalised_instrument_dir(

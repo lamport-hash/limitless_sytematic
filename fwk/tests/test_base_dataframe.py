@@ -13,14 +13,14 @@ from norm.norm_utils import load_normalized_df
 from core.data_org import (
     get_normalised_file,
     BUNDLE_DIR,
-    MktDataFred,
+    MktDataTFreq,
     ExchangeNAME,
     ProductType,
 )
 
 
 QQQ_FILE = get_normalised_file(
-    MktDataFred.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "QQQ"
+    MktDataTFreq.CANDLE_1HOUR, ExchangeNAME.FIRSTRATE, ProductType.ETF, "QQQ"
 )
 
 ALL_FEATURE_TYPES = [

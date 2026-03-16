@@ -15,7 +15,7 @@ from enum import Enum
 
 from core.data_org import (
     NORMALISED_DIR,
-    MktDataFred,
+    MktDataTFreq,
     ExchangeNAME,
     ProductType,
 )
@@ -42,7 +42,7 @@ class DataFile:
 
 def search_data(
     p_symbol: Optional[str] = None,
-    p_data_freq: Optional[Union[str, MktDataFred]] = None,
+    p_data_freq: Optional[Union[str, MktDataTFreq]] = None,
     p_source: Optional[Union[str, ExchangeNAME]] = None,
     p_exchange: Optional[Union[str, ExchangeNAME]] = None,
     p_product_type: Optional[Union[str, ProductType]] = None,
@@ -58,7 +58,7 @@ def search_data(
 
     Args:
         p_symbol: Instrument/symbol to match (e.g., "EURUSD", "qqq")
-        p_data_freq: Data frequency (e.g., "candle_1min", MktDataFred.CANDLE_1HOUR)
+        p_data_freq: Data frequency (e.g., "candle_1min", MktDataTFreq.CANDLE_1HOUR)
         p_source: Data source name (e.g., "firstrate", ExchangeNAME.FIRSTRATE)
         p_exchange: Exchange name (e.g., "undefined", ExchangeNAME.UNDEFINED)
         p_product_type: Product type (e.g., "spot", ProductType.ETF)
@@ -79,7 +79,7 @@ def search_data(
         # Find specific combination
         >>> files = search_data(
         ...     p_symbol="QQQ",
-        ...     p_data_freq=MktDataFred.CANDLE_1HOUR,
+        ...     p_data_freq=MktDataTFreq.CANDLE_1HOUR,
         ...     p_source=ExchangeNAME.FIRSTRATE,
         ...     p_product_type=ProductType.ETF
         ... )
@@ -172,7 +172,7 @@ def search_data_paths(**kwargs) -> List[Path]:
 
 
 def list_available(
-    p_data_freq: Optional[Union[str, MktDataFred]] = None,
+    p_data_freq: Optional[Union[str, MktDataTFreq]] = None,
     p_source: Optional[Union[str, ExchangeNAME]] = None,
     p_product_type: Optional[Union[str, ProductType]] = None,
     p_base_dir: Optional[Path] = None,

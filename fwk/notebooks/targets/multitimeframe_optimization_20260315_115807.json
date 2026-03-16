@@ -1,0 +1,179 @@
+{
+  "1h": {
+    "sma": {
+      "best_return": 0.0,
+      "best_params": {
+        "long_window": 2400,
+        "threshold": 0.03,
+        "min_length": 120,
+        "min_intensity": 0.15,
+        "prefix": "sma_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    },
+    "zigzag": {
+      "best_return": 0.056006859265216535,
+      "best_params": {
+        "threshold": 0.045,
+        "min_length": 360,
+        "prefix": "zigzag_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.30229340960312023,
+        "max_drawdown": -0.037084053424760066,
+        "win_rate": 0.434
+      }
+    },
+    "regression": {
+      "best_return": 0.0,
+      "best_params": {
+        "window": 720,
+        "slope_threshold": 0.001,
+        "r2_threshold": 0.2,
+        "min_length": 480,
+        "prefix": "regression_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    },
+    "directional": {
+      "best_return": 0.0,
+      "best_params": {
+        "lookback": 360,
+        "min_same_direction": 0.65,
+        "min_length": 360,
+        "prefix": "directional_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    }
+  },
+  "1d": {
+    "sma": {
+      "best_return": 0.0,
+      "best_params": {
+        "long_window": 30,
+        "threshold": 0.08,
+        "min_length": 5,
+        "min_intensity": 0.1,
+        "prefix": "sma_1d"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    },
+    "zigzag": {
+      "best_return": 0.16262148225825812,
+      "best_params": {
+        "threshold": 0.05,
+        "min_length": 30,
+        "prefix": "zigzag_1d"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.4365016126584602,
+        "max_drawdown": -0.16202409802477014,
+        "win_rate": 0.47
+      }
+    },
+    "regression": {
+      "best_return": 0.1849069182536358,
+      "best_params": {
+        "window": 30,
+        "slope_threshold": 0.0003,
+        "r2_threshold": 0.2,
+        "min_length": 20,
+        "prefix": "regression_1d"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.6437324288199892,
+        "max_drawdown": -0.06169271137506168,
+        "win_rate": 0.16
+      }
+    },
+    "directional": {
+      "best_return": 0.6229967957702411,
+      "best_params": {
+        "lookback": 10,
+        "min_same_direction": 0.6,
+        "min_length": 15,
+        "prefix": "directional_1d"
+      },
+      "backtest": {
+        "sharpe_ratio": 1.4637836590181068,
+        "max_drawdown": -0.05465490041291528,
+        "win_rate": 0.368
+      }
+    }
+  },
+  "1w": {
+    "sma": {
+      "best_return": 0.0,
+      "best_params": {
+        "long_window": 10,
+        "threshold": 0.055999999999999994,
+        "min_length": 7,
+        "min_intensity": 0.2,
+        "prefix": "sma_1w"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    },
+    "zigzag": {
+      "best_return": 0.0,
+      "best_params": {
+        "threshold": 0.049,
+        "min_length": 5,
+        "prefix": "zigzag_1w"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    },
+    "regression": {
+      "best_return": 1.3363965572676841,
+      "best_params": {
+        "window": 10,
+        "slope_threshold": 0.0005,
+        "r2_threshold": 0.3,
+        "min_length": 5,
+        "prefix": "regression_1w"
+      },
+      "backtest": {
+        "sharpe_ratio": 3.2793017183823836,
+        "max_drawdown": -0.09283975053370501,
+        "win_rate": 0.395
+      }
+    },
+    "directional": {
+      "best_return": 7.9557112989018215,
+      "best_params": {
+        "lookback": 3,
+        "min_same_direction": 0.65,
+        "min_length": 5,
+        "prefix": "directional_1w"
+      },
+      "backtest": {
+        "sharpe_ratio": 7.584831147936243,
+        "max_drawdown": -0.05157824025196381,
+        "win_rate": 0.705
+      }
+    }
+  }
+}

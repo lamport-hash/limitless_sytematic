@@ -13,7 +13,7 @@ from features.targets_trend_optimise import TrendOptimizer
 from features.targets_trend import add_sma_trends, add_zigzag_trends
 
 from norm.norm_utils import load_normalized_df
-from core.data_org import NORMALISED_DIR, MktDataFred, ExchangeNAME, ProductType
+from core.data_org import NORMALISED_DIR, MktDataTFreq, ExchangeNAME, ProductType
 
 MAJOR_FX_PAIRS = [
     "EURUSD",

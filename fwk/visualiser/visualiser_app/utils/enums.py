@@ -1,5 +1,5 @@
 from core.enums import (
-    MktDataFred,
+    MktDataTFreq,
     MktDataType,
     ConnectorTYPE,
     ExchangeNAME,
@@ -43,7 +43,7 @@ from features.features_utils import (
 )
 
 __all__ = [
-    "MktDataFred",
+    "MktDataTFreq",
     "MktDataType",
     "ConnectorTYPE",
     "ExchangeNAME",

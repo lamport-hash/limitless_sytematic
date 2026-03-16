@@ -18,7 +18,7 @@ def compute_dual_momentum(
     p_feature_id: str = "F_roc_4800_F_mid_f32_f16",
     p_default_etf_idx: int = 2,
     p_top_n: int = 1,
-    p_abs_momentum_threshold: float = 0.0,
+    p_abs_momentum_threshold: float = 0.0
 ) -> pd.DataFrame:
     """
     Compute dual momentum allocations for ETF basket.

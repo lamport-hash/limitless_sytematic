@@ -39,9 +39,10 @@ g_mid2_col = "F_mid2_f32"
 g_precision = "32"
 
 
-class MktDataFred(Enum):
+class MktDataTFreq(Enum):
     CANDLE_1MIN="candle_1min"
     CANDLE_1HOUR="candle_1hour"
+    CANDLE_1DAY="candle_1day"
 
 
 class MktDataType(Enum):

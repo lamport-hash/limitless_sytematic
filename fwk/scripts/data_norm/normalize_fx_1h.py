@@ -1,7 +1,7 @@
 """
-Normalize all firstrate FX 1min data files.
+Normalize all firstrate FX 1h data files.
 
-This script processes all .txt files in data/import/firstrate/fx/
+This script processes all .txt files in data/import/firstrate/fx_1h/
 and converts them to normalized parquet format in data/normalised/.
 """
 
@@ -20,19 +20,19 @@ from core.enums import MktDataTFreq, ExchangeNAME
 from norm.norm_firstrate_fx import norm_firstrate_fx
 
 
-def normalize_all_fx_1min(p_test_single: bool = False):
-    """Normalize all FX 1min files from firstrate.
+def normalize_all_fx_1h(p_test_single: bool = False):
+    """Normalize all FX 1h files from firstrate.
     
     Args:
         p_test_single: If True, only process one file for testing.
     """
     
-    subtype = "fx"
+    subtype = "fx_1h"
     source = ExchangeNAME.FIRSTRATE
-    data_freq = MktDataTFreq.CANDLE_1MIN
+    data_freq = MktDataTFreq.CANDLE_1HOUR
     product_type = ProductType.SPOT
 
-    import_dir = Path(__file__).parent.parent.parent / "data" / "import" / "firstrate" / "fx"
+    import_dir = Path(__file__).parent.parent.parent / "data" / "import" / "firstrate" / "fx_1h"
     
     txt_files = sorted(import_dir.glob("*.txt"))
     total_files = len(txt_files)
@@ -100,4 +100,4 @@ def normalize_all_fx_1min(p_test_single: bool = False):
 
 if __name__ == "__main__":
     test_mode = "--test" in sys.argv
-    normalize_all_fx_1min(p_test_single=test_mode)
+    normalize_all_fx_1h(p_test_single=test_mode)

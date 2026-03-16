@@ -156,7 +156,8 @@ class BaseDataFrame:
         if self.last_n_rows != -1:
             self.df = self.df[-self.last_n_rows :].copy()
 
-        self.df = add_minutes_since_2000(self.df, g_close_time_col, g_index_col)
+        if g_index_col not in self.df.columns:
+            self.df = add_minutes_since_2000(self.df, g_close_time_col, g_index_col)
         self.df["minute_diff"] = self.df[g_index_col].diff().fillna(1)
         self.df["gap_flag"] = self.df["minute_diff"] > 1
         self.df[self.valid_col_name] = self.df["gap_flag"] == False
@@ -397,10 +398,12 @@ class BaseDataFrame:
 
     def _add_hist_volatility(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         periods = periods or [15, 60]
+        new_cols = {}
         for period in periods:
             name = f"F_vol_{self.mid_col}_{period}_f16"
-            self.df[name] = rolling_std(self.df[self.mid_col].to_numpy(), period)
+            new_cols[name] = rolling_std(self.df[self.mid_col].to_numpy(), period)
             self._register_feature(name, FeatureType.HIST_VOLATILITY)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_lag_deltas(
         self,
@@ -409,72 +412,86 @@ class BaseDataFrame:
         n_minutes: int = 60,
         **kwargs: Any,
     ) -> None:
+        new_cols = {}
         for lag in range(1, n_lags + 1):
             lag_minutes = n_minutes * lag
             feature_id = f"F_delta_rel_{self.mid_col}_{lag_minutes}_f16"
-            self.df[feature_id] = (
+            new_cols[feature_id] = (
                 self.df[self.mid_col] - self.df[self.mid_col].shift(lag_minutes)
             ) / self.df[self.mid_col].shift(lag_minutes)
             self._register_feature(feature_id, FeatureType.LAG_DELTAS)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_rsi(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         periods = periods or [2, 15, 60, 240, 500, 1440, 2880]
+        new_cols = {}
         for period in periods:
             name = f"F_rsi_{period}_{self.mid_col}_f16"
-            self.df[name] = numba_rsi(self.df[self.mid_col].to_numpy(), period)
+            new_cols[name] = numba_rsi(self.df[self.mid_col].to_numpy(), period)
             self._register_feature(name, FeatureType.RSI)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_roc(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         periods = periods or [14, 60, 240]
+        new_cols = {}
         for period in periods:
             name = f"F_roc_{period}_{self.mid_col}_f16"
-            self.df[name] = numba_roc(self.df[self.mid_col].to_numpy(), period)
+            new_cols[name] = numba_roc(self.df[self.mid_col].to_numpy(), period)
             self._register_feature(name, FeatureType.ROC)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_ema(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         periods = periods or [2, 15, 60, 240, 500, 1440, 2880]
-        epsilon = 0.0001
-        ema_names = []
-
+        new_cols = {}
         for period in periods:
             ema_id = f"F_ema_{period}_{self.mid_col}_f32"
-            ema_names.append(ema_id)
-            self.df[ema_id] = numba_ema(self.df[self.mid_col].to_numpy(), period)
+            new_cols[ema_id] = numba_ema(self.df[self.mid_col].to_numpy(), period)
             self._register_feature(ema_id, FeatureType.EMA, activated=False)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_spread_rel_ema(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         periods = periods or [2, 15, 60, 240, 500, 1440, 2880]
         epsilon = 0.0001
 
         ema_names = [f"F_ema_{period}_{self.mid_col}_f32" for period in periods]
+        missing_ema_cols = {}
         for col in ema_names:
             if col not in self.df.columns:
                 period = int(col.split("_")[2])
-                self.df[col] = numba_ema(self.df[self.mid_col].to_numpy(), period)
+                missing_ema_cols[col] = numba_ema(self.df[self.mid_col].to_numpy(), period)
+        if missing_ema_cols:
+            self.df = pd.concat([self.df, pd.DataFrame(missing_ema_cols, index=self.df.index)], axis=1)
 
+        new_cols = {}
         for i in range(len(periods) - 1):
             name_id = f"F_delta_rel_ema_{periods[i]}_{periods[i + 1]}_{self.mid_col}_f16"
-            self.df[name_id] = (self.df[ema_names[i + 1]] - self.df[ema_names[i]]) / (
+            new_cols[name_id] = (self.df[ema_names[i + 1]] - self.df[ema_names[i]]) / (
                 self.df[ema_names[i]] + epsilon
             )
             self._register_feature(name_id, FeatureType.SPREAD_REL_EMA)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_diff_rel_ema_mid(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         periods = periods or [2, 15, 60, 240, 500, 1440, 2880]
         epsilon = 0.0001
 
         ema_names = [f"F_ema_{period}_{self.mid_col}_f32" for period in periods]
+        missing_ema_cols = {}
         for col in ema_names:
             if col not in self.df.columns:
                 period = int(col.split("_")[2])
-                self.df[col] = numba_ema(self.df[self.mid_col].to_numpy(), period)
+                missing_ema_cols[col] = numba_ema(self.df[self.mid_col].to_numpy(), period)
+        if missing_ema_cols:
+            self.df = pd.concat([self.df, pd.DataFrame(missing_ema_cols, index=self.df.index)], axis=1)
 
+        new_cols = {}
         for i in range(len(periods) - 1):
             name_id = f"F_diff_rel_ema_2_{self.mid_col}_{periods[i]}_f16"
-            self.df[name_id] = (self.df[ema_names[i + 1]] - self.df[self.mid_col]) / (
+            new_cols[name_id] = (self.df[ema_names[i + 1]] - self.df[self.mid_col]) / (
                 self.df[self.mid_col] + epsilon
             )
             self._register_feature(name_id, FeatureType.DIFF_REL_EMA_MID)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_adi(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         self.df, colname = add_accumulation_distribution_index(self.df)
@@ -648,3 +665,18 @@ class BaseDataFrame:
     def get_feature_columns(self) -> List[str]:
         """Return the list of feature column names."""
         return self.selected_columns
+
+    def desc(self) -> Dict[str, Any]:
+        """Return a description of the dataframe with size, dates, and columns."""
+        if g_close_time_col in self.df.columns:
+            start_date = pd.to_datetime(self.df[g_close_time_col].iloc[0], unit="ms")
+            end_date = pd.to_datetime(self.df[g_close_time_col].iloc[-1], unit="ms")
+        else:
+            start_date = None
+            end_date = None
+        return {
+            "size": len(self.df),
+            "start_date": start_date,
+            "end_date": end_date,
+            "columns": list(self.df.columns),
+        }

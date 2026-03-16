@@ -26,7 +26,7 @@ from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
 from features.targets_generators import add_targets_from_md
 from norm.norm_utils import load_normalized_df
-from core.data_org import get_normalised_file, MktDataFred, ExchangeNAME, ProductType
+from core.data_org import get_normalised_file, MktDataTFreq, ExchangeNAME, ProductType
 from core.enums import (
     g_open_col,
     g_high_col,
@@ -55,7 +55,7 @@ def load_data(
     """Load normalized OHLCV data for specified symbol."""
     try:
         path = get_normalised_file(
-            MktDataFred.CANDLE_1MIN,
+            MktDataTFreq.CANDLE_1MIN,
             ExchangeNAME.FIRSTRATE,
             ProductType.SPOT,
             p_symbol,

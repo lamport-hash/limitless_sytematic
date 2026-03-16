@@ -1,0 +1,46 @@
+{
+  "1h": {
+    "sma": {
+      "best_return": 1.9784239277391356,
+      "best_params": {
+        "long_window": 576,
+        "threshold": 0.02,
+        "min_length": 288,
+        "min_intensity": 0.1,
+        "prefix": "sma_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.5791249413208447,
+        "max_drawdown": -0.16112723760104997,
+        "win_rate": 0.35420406941950927
+      }
+    },
+    "zigzag": {
+      "best_return": 0.24912846231570174,
+      "best_params": {
+        "threshold": 0.02,
+        "min_length": 288,
+        "prefix": "zigzag_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.14671752386154122,
+        "max_drawdown": -0.2052730372397269,
+        "win_rate": 0.5016457211250748
+      }
+    },
+    "directional": {
+      "best_return": 0.0,
+      "best_params": {
+        "lookback": 1152,
+        "min_same_direction": 0.65,
+        "min_length": 288,
+        "prefix": "directional_1h"
+      },
+      "backtest": {
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "win_rate": 0.0
+      }
+    }
+  }
+}

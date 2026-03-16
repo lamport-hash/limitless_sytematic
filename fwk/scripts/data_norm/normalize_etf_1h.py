@@ -16,7 +16,7 @@ from core.data_org import (
     ProductType,
     list_instruments,
 )
-from core.enums import MktDataFred, ExchangeNAME
+from core.enums import MktDataTFreq, ExchangeNAME
 from norm.norm_firstdata import norm_firstdata
 
 
@@ -25,7 +25,7 @@ def normalize_all_etf_1h():
     
     subtype = "etf_1h"
     source = ExchangeNAME.FIRSTRATE
-    data_freq = MktDataFred.CANDLE_1HOUR
+    data_freq = MktDataTFreq.CANDLE_1HOUR
     product_type = ProductType.ETF
 
     import_dir = Path("/home/brian/sing/data/import/firstrate/etf_1h")
