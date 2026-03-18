@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Bundle Creator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 20px; }
+        h2 { color: #555; font-size: 18px; margin-bottom: 15px; }
+        
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .filter-group label {
+            font-weight: 600;
+            color: #555;
+            font-size: 13px;
+        }
+        select, input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 180px;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #0056b3; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #545b62; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #1e7e34; }
+        
+        .assets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .asset-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .asset-item:hover { background: #e9ecef; }
+        .asset-item input[type="checkbox"] { width: 16px; height: 16px; }
+        .asset-type-label {
+            font-size: 11px;
+            color: #888;
+            margin-left: auto;
+        }
+        
+        .selected-count {
+            padding: 10px;
+            background: #e7f3ff;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .selected-assets-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .selected-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: #007bff;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .selected-chip .remove-btn {
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 2px;
+        }
+        .selected-chip .remove-btn:hover { opacity: 0.7; }
+        
+        .options-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .checkbox-group input { width: 18px; height: 18px; }
+        
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-container.active { display: block; }
+        .progress-bar {
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .result-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .result-container.active { display: block; }
+        .result-success {
+            padding: 15px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            color: #155724;
+        }
+        .result-error {
+            padding: 15px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            color: #721c24;
+        }
+        
+        .bundles-list {
+            margin-top: 20px;
+        }
+        .bundle-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .bundle-item:last-child { border-bottom: none; }
+        .bundle-name { font-weight: 500; }
+        .bundle-info { color: #777; font-size: 12px; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #777;
+        }
+        .loading { text-align: center; padding: 20px; color: #777; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Data Bundle Creator</h1>
+        
+        <div class="panel">
+            <h2>1. Select Data Source</h2>
+            <div class="filters">
+                <div class="filter-group">
+                    <label>Frequency</label>
+                    <select id="freqSelect">
+                        <option value="candle_1hour">1 Hour Candles</option>
+                        <option value="candle_1min">1 Minute Candles</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Product Type</label>
+                    <select id="productTypeSelect">
+                        <option value="">All Types</option>
+                        <option value="spot">Spot (FX)</option>
+                        <option value="etf">ETF</option>
+                        <option value="future">Future</option>
+                        <option value="option">Option</option>
+                    </select>
+                </div>
+                <button class="btn" id="loadAssetsBtn">Load Assets</button>
+            </div>
+        </div>
+        
+        <div class="panel" id="assetsPanel" style="display: none;">
+            <h2>2. Select Assets</h2>
+            <div class="filters">
+                <input type="text" id="assetSearch" placeholder="Search assets...">
+                <button class="btn btn-secondary" id="selectAllBtn">Select All</button>
+                <button class="btn btn-secondary" id="deselectAllBtn">Deselect All</button>
+            </div>
+            <div id="assetsGrid" class="assets-grid">
+                <div class="loading">Loading assets...</div>
+            </div>
+            <div id="selectedCount" class="selected-count">0 assets selected</div>
+            <div id="selectedAssetsContainer" class="selected-assets-container"></div>
+        </div>
+        
+        <div class="panel" id="optionsPanel" style="display: none;">
+            <h2>3. Bundle Options</h2>
+            <div class="options-row">
+                <div class="filter-group">
+                    <label>Feature Config</label>
+                    <select id="featureConfigSelect">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="computeFeatures" checked>
+                    <label for="computeFeatures">Compute Features</label>
+                </div>
+                <div class="filter-group">
+                    <label>Output Prefix</label>
+                    <input type="text" id="outputPrefix" value="custom_bundle" placeholder="Bundle filename prefix">
+                </div>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-success" id="createBundleBtn">Create Bundle</button>
+            </div>
+        </div>
+        
+        <div class="panel" id="progressPanel" style="display: none;">
+            <h2>Bundle Creation Progress</h2>
+            <div class="progress-container active">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="progressText">Starting...</div>
+            </div>
+        </div>
+        
+        <div class="panel" id="resultPanel" style="display: none;">
+            <div id="resultContent"></div>
+        </div>
+        
+        <div class="panel">
+            <h2>Existing Bundles</h2>
+            <div id="bundlesList" class="bundles-list">
+                <div class="loading">Loading bundles...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>

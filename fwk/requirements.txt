@@ -32,3 +32,4 @@ optuna
 loguru
 sphinx
 sphinx-rtd-theme
+tabulate

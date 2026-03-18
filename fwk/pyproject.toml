@@ -33,6 +33,7 @@ dependencies = [
     "loguru",
     "sphinx",
     "sphinx-rtd-theme",
+    "tabulate"
 ]
 
 [project.optional-dependencies]

@@ -9,15 +9,17 @@ This module provides utilities for:
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Callable, Union
 
 import pandas as pd
+from ruamel.yaml import YAML
 
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
 from merger.merger_utils import merge_multiple_dataframes_from_parquet
 from core.data_org import (
     BUNDLE_DIR,
+    FEATURE_CONFIGS_DIR,
     get_normalised_instrument_dir,
     MktDataTFreq,
     ExchangeNAME,
@@ -43,6 +45,50 @@ DEFAULT_FEATURE_TYPES: List[FeatureType] = [
     FeatureType.ADI,
     FeatureType.ROC,
 ]
+
+
+def load_feature_config_from_yaml(config_path: Union[str, Path]) -> List[dict]:
+    """
+    Load feature configuration from a YAML file.
+
+    Args:
+        config_path: Path to YAML feature config file (relative to FEATURE_CONFIGS_DIR or absolute).
+
+    Returns:
+        List of feature config dicts with 'type', optional 'periods', and optional 'kwargs'.
+
+    Raises:
+        FileNotFoundError: If config file doesn't exist.
+        ValueError: If config is invalid.
+    """
+    full_path = FEATURE_CONFIGS_DIR / config_path if isinstance(config_path, str) else Path(config_path)
+    if not full_path.exists():
+        raise FileNotFoundError(f"Feature config file not found: {full_path}")
+
+    yaml = YAML()
+    with open(full_path, "r") as f:
+        config = yaml.load(f)
+
+    if not config or "features" not in config:
+        raise ValueError(f"No 'features' key found in {full_path}")
+
+    features = config["features"]
+    if not features:
+        raise ValueError(f"Empty features list in {full_path}")
+
+    return features
+
+
+def get_default_feature_config_path() -> Path:
+    """Get the path to the default feature config file."""
+    return FEATURE_CONFIGS_DIR / "default.yaml"
+
+
+def list_available_feature_configs() -> List[Path]:
+    """List all available feature config files."""
+    if not FEATURE_CONFIGS_DIR.exists():
+        return []
+    return sorted(FEATURE_CONFIGS_DIR.glob("*.yaml"))
 
 
 def get_base_df(
@@ -94,8 +140,10 @@ def compute_features_for_asset(
     source: ExchangeNAME = ExchangeNAME.FIRSTRATE,
     product_type: ProductType = ProductType.ETF,
     feature_types: Optional[List[FeatureType]] = None,
+    feature_config_path: Optional[Union[str, Path]] = None,
     output_dir: Optional[Path] = None,
     p_verbose: bool = False,
+    compute_features: bool = True,
 ) -> Path:
     """
     Compute features for a single asset and save to bundle directory.
@@ -105,9 +153,11 @@ def compute_features_for_asset(
         freq: Data frequency (default: CANDLE_1HOUR)
         source: Data source (default: FIRSTRATE)
         product_type: Product type (default: ETF)
-        feature_types: List of feature types to compute (default: DEFAULT_FEATURE_TYPES)
+        feature_types: List of feature types to compute (legacy, default: DEFAULT_FEATURE_TYPES)
+        feature_config_path: Path to YAML config file. Takes precedence over feature_types.
         output_dir: Output directory (default: BUNDLE_DIR/<freq>)
         p_verbose: Enable verbose logging (default: False)
+        compute_features: Whether to compute features (default: True). If False, only raw OHLCV.
 
     Returns:
         Path to the saved feature parquet file
@@ -139,8 +189,12 @@ def compute_features_for_asset(
         p_verbose=p_verbose,
     )
 
-    for feature_type in feature_types:
-        base_df.add_feature(feature_type)
+    if compute_features:
+        if feature_config_path:
+            _add_features_from_config(base_df, feature_config_path)
+        elif feature_types:
+            for feature_type in feature_types:
+                base_df.add_feature(feature_type)
 
     base_df.convert_f16_columns()
 
@@ -162,15 +216,53 @@ def compute_features_for_asset(
     return output_file
 
 
+def _add_features_from_config(base_df: BaseDataFrame, config_path: Union[str, Path]) -> None:
+    """Load features from a YAML configuration file and add them to the BaseDataFrame."""
+    full_path = FEATURE_CONFIGS_DIR / config_path if isinstance(config_path, str) else Path(config_path)
+    if not full_path.exists():
+        raise FileNotFoundError(f"Feature config file not found: {full_path}")
+
+    yaml = YAML()
+    with open(full_path, "r") as f:
+        config = yaml.load(f)
+
+    if not config or "features" not in config:
+        raise ValueError(f"No 'features' key found in config file: {full_path}")
+
+    features_config = config["features"]
+    if not features_config:
+        logger.warning(f"Empty features list in {full_path}")
+        return
+
+    for feature_config in features_config:
+        if not isinstance(feature_config, dict) or "type" not in feature_config:
+            logger.warning(f"Invalid feature config: {feature_config}")
+            continue
+
+        try:
+            feature_type = FeatureType(feature_config["type"])
+        except ValueError:
+            logger.warning(f"Unknown FeatureType '{feature_config['type']}' in {full_path}")
+            continue
+
+        periods = feature_config.get("periods")
+        kwargs = feature_config.get("kwargs", {})
+
+        base_df.add_feature(feature_type, periods=periods, **kwargs)
+
+
 def compute_asset_bundle(
     asset_list: List[str],
     asset_product_type: List[ProductType],
     freq: MktDataTFreq = MktDataTFreq.CANDLE_1HOUR,
     source: ExchangeNAME = ExchangeNAME.FIRSTRATE,
     feature_types: Optional[List[FeatureType]] = None,
+    feature_config_path: Optional[Union[str, Path]] = None,
     output_prefix: str = "asset_bundle",
     output_dir: Optional[Path] = None,
     p_verbose: bool = False,
+    compute_features: bool = True,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> Path:
     """
     Compute features for multiple assets and merge into a single bundle.
@@ -181,9 +273,12 @@ def compute_asset_bundle(
         freq: Data frequency (default: CANDLE_1HOUR)
         source: Data source (default: FIRSTRATE)
         feature_types: List of feature types to compute (default: DEFAULT_FEATURE_TYPES)
+        feature_config_path: Path to YAML config file. Takes precedence over feature_types.
         output_prefix: Prefix for output filename (default: "asset_bundle")
         output_dir: Output directory (default: BUNDLE_DIR)
         p_verbose: Enable verbose logging (default: False)
+        compute_features: Whether to compute features (default: True). If False, only raw OHLCV.
+        progress_callback: Optional callback(current, total, message) for progress updates.
 
     Returns:
         Path to the merged bundle file
@@ -203,20 +298,28 @@ def compute_asset_bundle(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    total_assets = len(asset_list)
     feature_files: List[Path] = []
     for i, symbol in enumerate(asset_list):
         if p_verbose:
             logger.info(f"Processing: {symbol}")
+        if progress_callback:
+            progress_callback(i, total_assets, f"Processing {symbol}")
         feature_file = compute_features_for_asset(
             symbol=symbol,
             freq=freq,
             source=source,
             product_type=asset_product_type[i],
             feature_types=feature_types,
+            feature_config_path=feature_config_path,
             output_dir=output_dir / freq.value,
             p_verbose=p_verbose,
+            compute_features=compute_features,
         )
         feature_files.append(feature_file)
+
+    if progress_callback:
+        progress_callback(total_assets, total_assets, "Merging feature files...")
 
     if p_verbose:
         logger.info("Merging all feature files...")

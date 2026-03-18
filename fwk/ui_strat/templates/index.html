@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual Momentum Strategy Backtest</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #4ecca3;
+            font-size: 2rem;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card-title {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            color: #4ecca3;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 8px;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #b0b0b0;
+            font-size: 0.9rem;
+        }
+        select, input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 1rem;
+            margin-bottom: 16px;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #4ecca3;
+        }
+        .assets-container {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .asset-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            transition: background 0.2s;
+        }
+        .asset-item:hover {
+            background: rgba(78, 204, 163, 0.1);
+        }
+        .asset-item input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+            accent-color: #4ecca3;
+        }
+        .asset-item label {
+            margin-bottom: 0;
+            cursor: pointer;
+            flex: 1;
+        }
+        .select-all-btn {
+            padding: 8px 16px;
+            background: rgba(78, 204, 163, 0.2);
+            border: 1px solid #4ecca3;
+            color: #4ecca3;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+        .select-all-btn:hover {
+            background: rgba(78, 204, 163, 0.3);
+        }
+        .btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #4ecca3 0%, #3db892 100%);
+            border: none;
+            border-radius: 8px;
+            color: #1a1a2e;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(78, 204, 163, 0.3);
+        }
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        .loading.active {
+            display: block;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #4ecca3;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .results {
+            display: none;
+        }
+        .results.active {
+            display: block;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: rgba(78, 204, 163, 0.1);
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .metric-label {
+            font-size: 0.8rem;
+            color: #b0b0b0;
+            margin-bottom: 4px;
+        }
+        .metric-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #4ecca3;
+        }
+        .metric-value.positive {
+            color: #4ecca3;
+        }
+        .metric-value.negative {
+            color: #e74c3c;
+        }
+        .chart-container {
+            margin-bottom: 20px;
+        }
+        .chart-container img {
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .chart-title {
+            font-size: 0.95rem;
+            color: #b0b0b0;
+            margin-bottom: 10px;
+        }
+        .error {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .error.active {
+            display: block;
+        }
+        .file-info {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: -10px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dual Momentum Strategy Backtest</h1>
+        
+        <div id="error" class="error"></div>
+        
+        <div class="grid-2">
+            <div class="card">
+                <h2 class="card-title">1. Select Data File</h2>
+                <label for="file-select">Parquet File:</label>
+                <select id="file-select" onchange="onFileSelect()">
+                    <option value="">-- Select a file --</option>
+                </select>
+                <div id="file-info" class="file-info"></div>
+                
+                <label>Available Assets:</label>
+                <button class="select-all-btn" onclick="selectAllAssets(true)">Select All</button>
+                <button class="select-all-btn" onclick="selectAllAssets(false)">Deselect All</button>
+                <div id="assets-container" class="assets-container">
+                    <p style="color: #888; text-align: center;">Select a file to see available assets</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2 class="card-title">2. Strategy Configuration</h2>
+                
+                <label for="lookback">Lookback Period (bars):</label>
+                <input type="number" id="lookback" value="1500" min="100" max="10000">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    ROC calculation window (e.g., 1500 = ~25 hours at 1-min bars)
+                </p>
+                
+                <label for="top-n">Top N Assets to Hold:</label>
+                <input type="number" id="top-n" value="2" min="1" max="10">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    Number of top-performing assets to allocate to
+                </p>
+                
+                <label for="default-asset">Default Asset (Safe Haven):</label>
+                <select id="default-asset">
+                    <option value="">-- Select a file first --</option>
+                </select>
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    Asset to hold when no momentum (safe haven)
+                </p>
+                
+                <label for="abs-momentum-threshold">Absolute Momentum Threshold:</label>
+                <input type="number" id="abs-momentum-threshold" value="0.0" step="0.01">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    Minimum ROC required for allocation (0.0 = positive return)
+                </p>
+                
+                <label for="transaction-cost">Transaction Cost (%):</label>
+                <input type="number" id="transaction-cost" value="0.1" step="0.01" min="0" max="10">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    Cost applied to each trade (e.g., 0.1 = 0.1% per trade)
+                </p>
+                
+                <button class="btn" id="run-btn" onclick="runBacktest()" disabled>
+                    Run Backtest
+                </button>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading card">
+            <div class="spinner"></div>
+            <p>Running backtest... This may take a moment.</p>
+        </div>
+        
+        <div id="results" class="results">
+            <div class="card">
+                <h2 class="card-title">Performance Metrics</h2>
+                <div id="metrics-grid" class="metrics-grid"></div>
+            </div>
+            
+            <div class="grid-2">
+                <div class="chart-container">
+                    <p class="chart-title">Portfolio Value Over Time</p>
+                    <img id="chart-portfolio" src="" alt="Portfolio Chart">
+                </div>
+                <div class="chart-container">
+                    <p class="chart-title">Drawdown</p>
+                    <img id="chart-drawdown" src="" alt="Drawdown Chart">
+                </div>
+            </div>
+            
+            <div class="grid-2">
+                <div class="chart-container">
+                    <p class="chart-title">Monthly Returns Heatmap</p>
+                    <img id="chart-monthly" src="" alt="Monthly Returns Chart">
+                </div>
+                <div class="chart-container">
+                    <p class="chart-title">Returns Distribution</p>
+                    <img id="chart-sharpe" src="" alt="Returns Distribution Chart">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let availableAssets = [];
+        
+        async function loadFiles() {
+            try {
+                const response = await fetch('/api/files');
+                const data = await response.json();
+                
+                const select = document.getElementById('file-select');
+                select.innerHTML = '<option value="">-- Select a file --</option>';
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                data.files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file.name;
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                    option.textContent = `${file.name} (${sizeMB} MB)`;
+                    select.appendChild(option);
+                });
+            } catch (err) {
+                showError('Failed to load files: ' + err.message);
+            }
+        }
+        
+        async function onFileSelect() {
+            const filename = document.getElementById('file-select').value;
+            const container = document.getElementById('assets-container');
+            const fileInfo = document.getElementById('file-info');
+            
+            if (!filename) {
+                container.innerHTML = '<p style="color: #888; text-align: center;">Select a file to see available assets</p>';
+                fileInfo.textContent = '';
+                document.getElementById('run-btn').disabled = true;
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/files/${encodeURIComponent(filename)}/assets`);
+                const data = await response.json();
+                
+                availableAssets = data.assets || [];
+                fileInfo.textContent = `Found ${availableAssets.length} assets in file`;
+                
+                if (availableAssets.length === 0) {
+                    container.innerHTML = '<p style="color: #888; text-align: center;">No assets found in file</p>';
+                    return;
+                }
+                
+                container.innerHTML = availableAssets.map((asset, idx) => `
+                    <div class="asset-item">
+                        <input type="checkbox" id="asset-${idx}" value="${asset}" checked>
+                        <label for="asset-${idx}">${asset}</label>
+                    </div>
+                `).join('');
+                
+                populateDefaultAssetDropdown(availableAssets);
+                updateRunButton();
+            } catch (err) {
+                showError('Failed to load assets: ' + err.message);
+            }
+        }
+        
+        function populateDefaultAssetDropdown(assets) {
+            const select = document.getElementById('default-asset');
+            select.innerHTML = '';
+            
+            assets.forEach(asset => {
+                const option = document.createElement('option');
+                option.value = asset;
+                option.textContent = asset;
+                select.appendChild(option);
+            });
+            
+            if (assets.includes('SHV')) {
+                select.value = 'SHV';
+            } else if (assets.includes('TLT')) {
+                select.value = 'TLT';
+            } else if (assets.length > 0) {
+                select.value = assets[0];
+            }
+        }
+        
+        function selectAllAssets(selected) {
+            const checkboxes = document.querySelectorAll('#assets-container input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = selected);
+            updateRunButton();
+        }
+        
+        function getSelectedAssets() {
+            const checkboxes = document.querySelectorAll('#assets-container input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+        
+        function updateRunButton() {
+            const filename = document.getElementById('file-select').value;
+            const selected = getSelectedAssets();
+            document.getElementById('run-btn').disabled = !filename || selected.length === 0;
+        }
+        
+        async function runBacktest() {
+            hideError();
+            
+            const filename = document.getElementById('file-select').value;
+            const selectedAssets = getSelectedAssets();
+            const lookback = parseInt(document.getElementById('lookback').value);
+            const topN = parseInt(document.getElementById('top-n').value);
+            const defaultAsset = document.getElementById('default-asset').value;
+            const absMomentumThreshold = parseFloat(document.getElementById('abs-momentum-threshold').value);
+            const transactionCost = parseFloat(document.getElementById('transaction-cost').value);
+            
+            if (!filename || selectedAssets.length === 0) {
+                showError('Please select a file and at least one asset');
+                return;
+            }
+            
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('results').classList.remove('active');
+            document.getElementById('run-btn').disabled = true;
+            
+            try {
+                const response = await fetch('/api/run-backtest', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: filename,
+                        selected_assets: selectedAssets,
+                        lookback: lookback,
+                        default_asset: defaultAsset,
+                        top_n: topN,
+                        abs_momentum_threshold: absMomentumThreshold,
+                        transaction_cost_pct: transactionCost
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Backtest failed');
+                }
+                
+                displayResults(data);
+            } catch (err) {
+                showError('Backtest failed: ' + err.message);
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+                document.getElementById('run-btn').disabled = false;
+            }
+        }
+        
+        function displayResults(data) {
+            const metrics = data.metrics;
+            
+            const metricsHtml = `
+                <div class="metric-card">
+                    <div class="metric-label">Period</div>
+                    <div class="metric-value">${metrics.years} years</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Total Return</div>
+                    <div class="metric-value ${metrics.total_return >= 0 ? 'positive' : 'negative'}">${metrics.total_return.toFixed(2)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">CAGR</div>
+                    <div class="metric-value ${metrics.cagr >= 0 ? 'positive' : 'negative'}">${metrics.cagr.toFixed(2)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Max Drawdown</div>
+                    <div class="metric-value negative">${metrics.max_drawdown.toFixed(2)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Sharpe Ratio</div>
+                    <div class="metric-value">${metrics.sharpe_ratio.toFixed(2)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Calmar Ratio</div>
+                    <div class="metric-value">${metrics.calmar_ratio.toFixed(2)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Win Rate</div>
+                    <div class="metric-value">${metrics.win_rate.toFixed(1)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Orders</div>
+                    <div class="metric-value">${data.orders_count}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Start Date</div>
+                    <div class="metric-value" style="font-size: 1rem;">${metrics.start_date}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">End Date</div>
+                    <div class="metric-value" style="font-size: 1rem;">${metrics.end_date}</div>
+                </div>
+            `;
+            
+            document.getElementById('metrics-grid').innerHTML = metricsHtml;
+            
+            const timestamp = Date.now();
+            document.getElementById('chart-portfolio').src = `/static/charts/${data.charts.portfolio}?t=${timestamp}`;
+            document.getElementById('chart-drawdown').src = `/static/charts/${data.charts.drawdown}?t=${timestamp}`;
+            document.getElementById('chart-monthly').src = `/static/charts/${data.charts.monthly_returns}?t=${timestamp}`;
+            document.getElementById('chart-sharpe').src = `/static/charts/${data.charts.sharpe}?t=${timestamp}`;
+            
+            document.getElementById('results').classList.add('active');
+        }
+        
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.classList.add('active');
+        }
+        
+        function hideError() {
+            document.getElementById('error').classList.remove('active');
+        }
+        
+        document.addEventListener('DOMContentLoaded', loadFiles);
+        document.getElementById('assets-container').addEventListener('change', updateRunButton);
+    </script>
+</body>
+</html>

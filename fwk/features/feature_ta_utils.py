@@ -209,6 +209,7 @@ def numba_roc(prices, period):
     return roc
 
 
+
 @jit(nopython=True)
 def numba_roc_correct_min(prices, min_index, period):
     """
@@ -225,21 +226,27 @@ def numba_roc_correct_min(prices, min_index, period):
     """
     n = len(prices)
     roc = np.zeros(n)
-
-    last_min = 0
-    last_index = 0
-
-    for i in range(period, n):
-        if prices[i - period] != 0:
-            for j in range(last_index, i):
-                if min_index[j] >= min_index[i] - period: # try to find the correct past index j to compute roc 
-                    roc[i] = (prices[i] - prices[j]) / prices[j] * 100
-                    last_min = min_index[j]
-                    last_index = j
-                    break
+    
+    j = 0  # pointer for the past index
+    
+    for i in range(1, n):
+        target_min = min_index[i] - period
+        #print(target_min)
+        
+        # Move j forward until we find the first index that exceeds target_min
+        while j < i and min_index[j] <= target_min:
+            j += 1
+        
+        # Now j is the first index with min_index[j] > target_min
+        # So j-1 is the last index with min_index <= target_min
+        past_idx = j - 1
+        
+        if past_idx >= 0 and prices[past_idx] != 0:
+            roc[i] = (prices[i] - prices[past_idx]) / prices[past_idx] * 100
+    
     return roc
 
-# todo check this
+
 
 
 def add_accumulation_distribution_index(df):

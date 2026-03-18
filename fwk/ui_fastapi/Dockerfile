@@ -7,10 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir -e . || pip install --no-cache-dir -r requirements.txt
+RUN pip install -e . || pip install -r requirements.txt
 
 COPY ui_fastapi/requirements.txt ./ui_fastapi/
-RUN pip install --no-cache-dir -r ui_fastapi/requirements.txt
+RUN pip install  -r ui_fastapi/requirements.txt
 
 COPY . .
 

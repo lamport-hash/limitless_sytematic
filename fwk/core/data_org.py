@@ -38,6 +38,7 @@ IMPORT_DIR = DATA_DIR / "import"
 NORMALISED_DIR = DATA_DIR / "normalised"
 BUNDLE_DIR = DATA_DIR / "bundle"
 WORK_DIR = DATA_DIR / "work"
+FEATURE_CONFIGS_DIR = DATA_DIR / "feature_configs"
 
 
 class ProductType(Enum):

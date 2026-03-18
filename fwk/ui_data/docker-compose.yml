@@ -1,0 +1,12 @@
+services:
+  ui_data:
+    build:
+      context: ..
+      dockerfile: ui_data/Dockerfile
+    ports:
+      - "0.0.0.0:8765:8765"
+    volumes:
+      - ../data:/app/data:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

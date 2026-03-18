@@ -14,6 +14,7 @@ def compute_dual_momentum(
     p_df: pd.DataFrame,
     p_feature_id: str = "F_roc_4800_F_mid_f32_f16",
     p_default_asset_idx: int = 2,
+    p_default_asset: str = "TLT",
     p_top_n: int = 1,
     p_abs_momentum_threshold: float = 0.0,
     p_asset_list = ["QQQ", "SPY", "TLT", "GLD", "VWO"]
@@ -29,7 +30,8 @@ def compute_dual_momentum(
     Args:
         p_df: DataFrame with asset bundle (prefixed columns)
         p_feature_id: Feature to use for momentum (e.g., "F_roc_4800_F_mid_f32_f16")
-        p_default_asset_idx: Index of asset to use when nothing has momentum (default: 2 = TLT)
+        p_default_asset_idx: Index of asset to use when nothing has momentum
+        p_default_asset: Symbol of default asset (safe haven) for verification
         p_top_n: Number of top momentum assets to allocate to (default: 1)
         p_abs_momentum_threshold: Minimum ROC for absolute momentum (default: 0.0)
 
@@ -52,6 +54,7 @@ def compute_dual_momentum(
     n_assets = len(p_asset_list)
 
     allocations = np.zeros((n_periods, n_assets))
+    using_safe_haven = np.zeros(n_periods, dtype=bool)
 
     for t in range(n_periods):
         current_roc = roc_matrix.iloc[t].values
@@ -59,12 +62,14 @@ def compute_dual_momentum(
         valid_mask = ~np.isnan(current_roc)
         if not valid_mask.any():
             allocations[t, p_default_asset_idx] = 1.0
+            using_safe_haven[t] = True
             continue
 
         abs_momentum_mask = current_roc > p_abs_momentum_threshold
 
         if not abs_momentum_mask.any():
             allocations[t, p_default_asset_idx] = 1.0
+            using_safe_haven[t] = True
         else:
             ranked_indices = np.argsort(-current_roc)
 
@@ -79,6 +84,7 @@ def compute_dual_momentum(
                     allocations[t, idx] = weight
             else:
                 allocations[t, p_default_asset_idx] = 1.0
+                using_safe_haven[t] = True
 
     for i, asset in enumerate(p_asset_list):
         df[f"A_{asset}_alloc"] = allocations[:, i]
@@ -87,6 +93,8 @@ def compute_dual_momentum(
     df["A_top_asset"] = df["A_top_asset"].str.replace("A_", "").str.replace("_alloc", "")
 
     df["A_n_positive_momentum"] = (roc_matrix > p_abs_momentum_threshold).sum(axis=1)
+    df["A_using_safe_haven"] = using_safe_haven
+    df["A_safe_haven_asset"] = p_default_asset
 
     roc_rank = roc_matrix.rank(axis=1, ascending=False)
     for asset in p_asset_list:
