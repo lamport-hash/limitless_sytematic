@@ -21,9 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ui_strat.backtest_runner import (
     load_parquet_file,
     run_backtest,
+    compute_trades_from_orders,
 )
 
 warnings.filterwarnings('ignore')
+
+BACKTEST_CACHE: Dict = {}
 
 app = FastAPI(title="Dual Momentum Strategy Backtest")
 
@@ -39,16 +42,25 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 class BacktestRequest(BaseModel):
     filename: str
     selected_assets: List[str]
-    lookback: int
+    lookback: int = 3500
     default_asset: str
     top_n: int
     abs_momentum_threshold: float
-    transaction_cost_pct: float = 0.1
+    transaction_cost_pct: float = 0.01
+    min_holding_periods: int = 240
+    switch_threshold_pct: float = 0.0
+    rsi_period: int = 14
+    use_rsi_entry_filter: bool = False
+    rsi_entry_max: float = 30.0
+    use_rsi_entry_queue: bool = False
+    use_rsi_diff_filter: bool = False
+    rsi_diff_threshold: float = 10.0
 
 
 class BacktestResponse(BaseModel):
     run_id: str
     metrics: Dict
+    asset_metrics: Dict
     charts: Dict[str, str]
     orders_count: int
 
@@ -109,15 +121,52 @@ async def api_run_backtest(request: BacktestRequest):
             top_n=request.top_n,
             abs_momentum_threshold=request.abs_momentum_threshold,
             transaction_cost_pct=request.transaction_cost_pct,
+            min_holding_periods=request.min_holding_periods,
+            switch_threshold_pct=request.switch_threshold_pct,
+            rsi_period=request.rsi_period,
+            use_rsi_entry_filter=request.use_rsi_entry_filter,
+            rsi_entry_max=request.rsi_entry_max,
+            use_rsi_entry_queue=request.use_rsi_entry_queue,
+            use_rsi_diff_filter=request.use_rsi_diff_filter,
+            rsi_diff_threshold=request.rsi_diff_threshold,
             run_id=run_id
         )
+        
+        BACKTEST_CACHE[run_id] = {
+            'orders_df': result.get('orders_df'),
+            'p_df': result.get('p_df'),
+            'assets': request.selected_assets
+        }
         
         return BacktestResponse(
             run_id=run_id,
             metrics=result["metrics"],
+            asset_metrics=result["asset_metrics"],
             charts=result["charts"],
             orders_count=result["orders_count"]
         )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/run-backtest/{run_id}/trades")
+async def get_backtest_trades(run_id: str):
+    try:
+        if run_id not in BACKTEST_CACHE:
+            raise HTTPException(status_code=404, detail="Run ID not found or expired")
+        
+        cache_entry = BACKTEST_CACHE[run_id]
+        orders_df = cache_entry.get('orders_df')
+        p_df = cache_entry.get('p_df')
+        assets = cache_entry.get('assets', [])
+        
+        trades = compute_trades_from_orders(orders_df, p_df, assets)
+        
+        return {"trades": trades, "count": len(trades)}
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

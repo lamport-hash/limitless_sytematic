@@ -9,7 +9,7 @@ import uuid
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import matplotlib
 matplotlib.use('Agg')
@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from strat.strat_backtest import compute_dual_momentum
 from backtest.backtest_basket_alloc_based import run_full_backtest
-from features.feature_ta_utils import numba_roc_correct_min
+from features.feature_ta_utils import numba_roc_correct_min, numba_rsi
 
 warnings.filterwarnings('ignore')
 
@@ -81,6 +81,26 @@ def generate_roc_features(df: pd.DataFrame, assets: List[str], lookback: int) ->
                 df[index_col].to_numpy(),
                 lookback * 60
             )
+    
+    return df
+
+
+def generate_rsi_features(df: pd.DataFrame, assets: List[str], rsi_period: int) -> pd.DataFrame:
+    """Generate RSI features for the specified period using close prices."""
+    df = df.copy()
+    
+    close_col = "S_close_f32"
+    
+    for asset in assets:
+        price_col = f"{asset}_{close_col}"
+        if price_col not in df.columns:
+            continue
+            
+        rsi_col_name = f"{asset}_F_rsi_{rsi_period}_{close_col}_f16"
+        if rsi_col_name not in df.columns:
+            prices = df[price_col].to_numpy()
+            rsi_values = numba_rsi(prices, rsi_period)
+            df[rsi_col_name] = rsi_values.astype(np.float32)
     
     return df
 
@@ -184,7 +204,89 @@ def calculate_performance_metrics(p_df: pd.DataFrame, risk_free_rate: float = 0.
     }
 
 
-def generate_charts(metrics: Dict, run_id: str) -> Dict[str, str]:
+def calculate_asset_metrics(p_df: pd.DataFrame, assets: List[str], risk_free_rate: float = 0.02) -> Dict:
+    """Calculate per-asset performance metrics."""
+    import math
+    
+    asset_metrics = {}
+    alloc_cols_in_df = [c for c in p_df.columns if '_alloc' in c]
+    close_cols_in_df = [c for c in p_df.columns if '_S_close_f32' in c]
+    
+    for asset in assets:
+        close_col = f"{asset}_S_close_f32"
+        alloc_col = f"A_{asset}_alloc"
+        
+        if close_col not in p_df.columns:
+            matching = [c for c in close_cols_in_df if c.startswith(asset + '_')]
+            if matching:
+                close_col = matching[0]
+            else:
+                continue
+        
+        if alloc_col not in p_df.columns:
+            matching_alloc = [c for c in alloc_cols_in_df if asset in c]
+            if matching_alloc:
+                alloc_col = matching_alloc[0]
+            else:
+                alloc_col = None
+        
+        prices = p_df[close_col]
+        
+        if len(prices) < 2 or prices.iloc[0] <= 0:
+            continue
+        
+        total_return = float((prices.iloc[-1] / prices.iloc[0] - 1) * 100)
+        
+        cummax = prices.cummax()
+        drawdown = (prices - cummax) / cummax
+        max_dd = float(drawdown.min() * 100)
+        
+        daily_rets = prices.pct_change().dropna()
+        daily_vol = daily_rets.std()
+        if daily_vol > 0:
+            sharpe = float(math.sqrt(365) * (daily_rets.mean() - risk_free_rate / 365) / daily_vol)
+        else:
+            sharpe = 0.0
+        
+        if alloc_col and alloc_col in p_df.columns:
+            alloc_series = p_df[alloc_col].fillna(0)
+            allocated = int((alloc_series > 0).sum())
+            
+            entries = int(((alloc_series.shift(1) == 0) & (alloc_series > 0)).sum())
+            
+            asset_returns = prices.pct_change()
+            contribution = asset_returns * alloc_series
+            mask = alloc_series > 0
+            if mask.any():
+                strat_return = float((1 + contribution[mask]).prod() - 1) * 100
+            else:
+                strat_return = 0.0
+        else:
+            allocated = 0
+            entries = 0
+            strat_return = 0.0
+        
+        asset_metrics[asset] = {
+            'total_return': round(total_return, 2),
+            'max_drawdown': round(max_dd, 2),
+            'sharpe_ratio': round(sharpe, 2),
+            'candles_allocated': allocated,
+            'strat_return': round(strat_return, 2),
+            'entries': entries
+        }
+    
+    total_allocated = sum(am['candles_allocated'] for am in asset_metrics.values())
+    for asset in asset_metrics:
+        if total_allocated > 0:
+            pct = asset_metrics[asset]['candles_allocated'] / total_allocated * 100
+        else:
+            pct = 0.0
+        asset_metrics[asset]['pct_allocated'] = round(pct, 2)
+    
+    return asset_metrics
+
+
+def generate_charts(metrics: Dict, run_id: str, assets_to_use: List[str] = None) -> Dict[str, str]:
     """Generate performance charts and save as PNG files."""
     import math
     
@@ -193,14 +295,30 @@ def generate_charts(metrics: Dict, run_id: str) -> Dict[str, str]:
     chart_files = {}
     
     fig1, ax1 = plt.subplots(figsize=(12, 6))
-    ax1.plot(p_df['date'], p_df['port_value'], linewidth=2, color='#2E86AB')
-    ax1.fill_between(p_df['date'], p_df['port_value'], p_df['port_value'].iloc[0], 
-                     alpha=0.3, color='#2E86AB')
-    ax1.set_title('Portfolio Value Over Time', fontsize=14, fontweight='bold')
+    
+    asset_colors = plt.cm.tab10(np.linspace(0, 1, 10))
+    if assets_to_use:
+        for i, asset in enumerate(assets_to_use):
+            close_col = f"{asset}_S_close_f32"
+            if close_col in p_df.columns:
+                asset_prices = p_df[close_col]
+                initial_price = asset_prices.iloc[0]
+                if initial_price > 0:
+                    scaled = (asset_prices / initial_price) * 100
+                    color = asset_colors[i % 10]
+                    ax1.plot(p_df['date'], scaled, linewidth=1, alpha=0.5, 
+                            color=color, linestyle='--', label=f'{asset}')
+    
+    port_scaled = (p_df['port_value'] / p_df['port_value'].iloc[0]) * 100
+    ax1.plot(p_df['date'], port_scaled, linewidth=2.5, color='#2E86AB', label='Portfolio')
+    ax1.fill_between(p_df['date'], port_scaled, 100, alpha=0.2, color='#2E86AB')
+    
+    ax1.set_title('Portfolio vs Assets (Scaled to 100)', fontsize=14, fontweight='bold')
     ax1.set_xlabel('Date')
-    ax1.set_ylabel('Portfolio Value ($)')
+    ax1.set_ylabel('Value (Starting = 100)')
     ax1.grid(True, alpha=0.3)
-    ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'${x:,.0f}'))
+    ax1.legend(loc='upper left', fontsize=8, ncol=2)
+    ax1.axhline(y=100, color='gray', linestyle=':', linewidth=0.8, alpha=0.5)
     ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax1.xaxis.set_major_locator(mdates.YearLocator())
     plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45)
@@ -356,6 +474,108 @@ def generate_charts(metrics: Dict, run_id: str) -> Dict[str, str]:
     return chart_files
 
 
+def compute_trades_from_orders(
+    orders_df: pd.DataFrame,
+    p_df: pd.DataFrame,
+    assets: List[str]
+) -> List[Dict[str, Any]]:
+    """
+    Compute round-trip trades from orders using FIFO matching.
+    
+    Returns list of trades with entry/exit info, return %, max drawdown, duration.
+    """
+    if orders_df is None or len(orders_df) == 0:
+        return []
+    
+    price_data = {}
+    for asset in assets:
+        col = f"{asset}_S_close_f32"
+        if col in p_df.columns:
+            price_data[asset] = p_df[col].to_numpy()
+    
+    index_to_minute = {}
+    if 'i_minute_i' in p_df.columns:
+        for idx, minute in enumerate(p_df['i_minute_i'].values):
+            index_to_minute[idx] = minute
+    
+    trades = []
+    
+    orders_sorted = orders_df.sort_values('timestamp').reset_index(drop=True)
+    
+    for asset in assets:
+        asset_orders = orders_sorted[orders_sorted['etf'] == asset].copy()
+        
+        if len(asset_orders) == 0:
+            continue
+        
+        open_positions = []
+        
+        for _, order in asset_orders.iterrows():
+            if order['direction'] > 0:
+                open_positions.append({
+                    'qty': order['size'],
+                    'entry_price': order['price'],
+                    'entry_timestamp': order['timestamp'],
+                    'entry_row': None
+                })
+            else:
+                sell_qty = order['size']
+                sell_price = order['price']
+                sell_timestamp = order['timestamp']
+                sell_row = None
+                
+                while sell_qty > 0 and open_positions:
+                    pos = open_positions[0]
+                    
+                    matched_qty = min(pos['qty'], sell_qty)
+                    
+                    entry_ts = pos['entry_timestamp']
+                    exit_ts = sell_timestamp
+                    
+                    entry_dt = minutes_to_datetime(entry_ts)
+                    exit_dt = minutes_to_datetime(exit_ts)
+                    
+                    trade_return = ((sell_price - pos['entry_price']) / pos['entry_price']) * 100
+                    
+                    max_dd = 0.0
+                    duration = 0
+                    if asset in price_data:
+                        prices = price_data[asset]
+                        
+                        entry_row = np.searchsorted(p_df['i_minute_i'].values, entry_ts)
+                        exit_row = np.searchsorted(p_df['i_minute_i'].values, exit_ts)
+                        
+                        if entry_row < len(prices) and exit_row <= len(prices):
+                            trade_prices = prices[entry_row:exit_row + 1]
+                            if len(trade_prices) > 0 and pos['entry_price'] > 0:
+                                min_price = np.nanmin(trade_prices)
+                                max_dd = ((min_price - pos['entry_price']) / pos['entry_price']) * 100
+                            duration = exit_row - entry_row
+                    
+                    trades.append({
+                        'asset': asset,
+                        'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M'),
+                        'entry_price': round(pos['entry_price'], 4),
+                        'entry_qty': round(matched_qty, 4),
+                        'exit_date': exit_dt.strftime('%Y-%m-%d %H:%M'),
+                        'exit_price': round(sell_price, 4),
+                        'exit_qty': round(matched_qty, 4),
+                        'return_pct': round(trade_return, 2),
+                        'max_dd_pct': round(max_dd, 2),
+                        'duration_bars': duration
+                    })
+                    
+                    pos['qty'] -= matched_qty
+                    sell_qty -= matched_qty
+                    
+                    if pos['qty'] <= 1e-9:
+                        open_positions.pop(0)
+    
+    trades.sort(key=lambda x: x['entry_date'], reverse=True)
+    
+    return trades
+
+
 def run_backtest(
     filepath: str,
     selected_assets: List[str],
@@ -364,6 +584,14 @@ def run_backtest(
     top_n: int,
     abs_momentum_threshold: float,
     transaction_cost_pct: float = 0.1,
+    min_holding_periods: int = 0,
+    switch_threshold_pct: float = 0.0,
+    rsi_period: int = 14,
+    use_rsi_entry_filter: bool = False,
+    rsi_entry_max: float = 30.0,
+    use_rsi_entry_queue: bool = False,
+    use_rsi_diff_filter: bool = False,
+    rsi_diff_threshold: float = 10.0,
     run_id: Optional[str] = None,
 ) -> Dict:
     """Run the complete dual momentum backtest."""
@@ -383,7 +611,11 @@ def run_backtest(
     
     df_with_roc = generate_roc_features(df, assets_to_use, lookback)
     
+    if use_rsi_entry_filter or use_rsi_diff_filter:
+        df_with_roc = generate_rsi_features(df_with_roc, assets_to_use, rsi_period)
+    
     feature_id = f"F_roctrue_{lookback}_F_mid_f32_f16"
+    rsi_feature_id = f"F_rsi_{rsi_period}_S_close_f32_f16"
     
     df_allocations = compute_dual_momentum(
         p_df=df_with_roc,
@@ -392,7 +624,15 @@ def run_backtest(
         p_default_asset=default_asset,
         p_top_n=top_n,
         p_abs_momentum_threshold=abs_momentum_threshold,
-        p_asset_list=assets_to_use
+        p_asset_list=assets_to_use,
+        p_min_holding_periods=min_holding_periods,
+        p_switch_threshold_pct=switch_threshold_pct,
+        p_use_rsi_entry_filter=use_rsi_entry_filter,
+        p_rsi_entry_max=rsi_entry_max,
+        p_use_rsi_entry_queue=use_rsi_entry_queue,
+        p_use_rsi_diff_filter=use_rsi_diff_filter,
+        p_rsi_diff_threshold=rsi_diff_threshold,
+        p_rsi_feature_id=rsi_feature_id
     )
     
     p_df_result, orders_df = run_full_backtest(df_allocations, assets_to_use, transaction_cost_pct)
@@ -402,7 +642,9 @@ def run_backtest(
     
     metrics = calculate_performance_metrics(p_df_result)
     
-    chart_files = generate_charts(metrics, run_id)
+    asset_metrics = calculate_asset_metrics(p_df_result, assets_to_use)
+    
+    chart_files = generate_charts(metrics, run_id, assets_to_use)
     
     monthly_returns_dict = {}
     for year, row in metrics['monthly_returns'].iterrows():
@@ -427,6 +669,9 @@ def run_backtest(
             'win_rate': metrics['win_rate'],
             'monthly_returns': monthly_returns_dict,
         },
+        'asset_metrics': asset_metrics,
         'charts': chart_files,
         'orders_count': len(orders_df),
+        'orders_df': orders_df,
+        'p_df': p_df_result,
     }

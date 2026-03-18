@@ -35,6 +35,8 @@ class BundleTask:
     output_prefix: str
     compute_features: bool
     feature_config_path: Optional[str] = None
+    output_dir: Optional[Path] = None
+    folder: Optional[str] = None
     
     status: BundleTaskStatus = BundleTaskStatus.PENDING
     progress: int = 0
@@ -67,6 +69,7 @@ class BundleTask:
             "feature_config_path": self.feature_config_path,
             "assets_processed": self.assets_processed,
             "output_path": str(self.output_path) if self.output_path else None,
+            "folder": self.folder,
             "file_size_mb": self.file_size_mb,
             "error": self.error,
             "created_at": self.created_at,
@@ -90,6 +93,8 @@ class BundleTaskManager:
         output_prefix: str,
         compute_features: bool,
         feature_config_path: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        folder: Optional[str] = None,
     ) -> BundleTask:
         """Create a new bundle task."""
         task = BundleTask(
@@ -99,6 +104,9 @@ class BundleTaskManager:
             freq=freq,
             output_prefix=output_prefix,
             compute_features=compute_features,
+            feature_config_path=feature_config_path,
+            output_dir=output_dir,
+            folder=folder,
             total=len(assets),
         )
         self._tasks[task_id] = task
@@ -126,13 +134,15 @@ class BundleTaskManager:
                 task.assets_processed = current
                 logger.info(f"Task {task_id}: {message}")
             
+            output_dir = task.output_dir if task.output_dir else BUNDLE_DIR
+            
             output_path = compute_asset_bundle(
                 asset_list=task.assets,
                 asset_product_type=task.product_types,
                 freq=task.freq,
                 source=ExchangeNAME.FIRSTRATE,
                 output_prefix=task.output_prefix,
-                output_dir=BUNDLE_DIR,
+                output_dir=output_dir,
                 p_verbose=True,
                 compute_features=task.compute_features,
                 feature_config_path=task.feature_config_path,

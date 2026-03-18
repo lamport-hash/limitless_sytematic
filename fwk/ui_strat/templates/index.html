@@ -221,6 +221,28 @@
             margin-top: -10px;
             margin-bottom: 16px;
         }
+        .asset-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .asset-table th, .asset-table td {
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .asset-table th {
+            color: #4ecca3;
+            font-size: 0.85rem;
+        }
+        .asset-table td {
+            font-size: 0.9rem;
+        }
+        .asset-table tr:hover {
+            background: rgba(78, 204, 163, 0.1);
+        }
+        .positive { color: #4ecca3; }
+        .negative { color: #e74c3c; }
     </style>
 </head>
 <body>
@@ -250,7 +272,7 @@
                 <h2 class="card-title">2. Strategy Configuration</h2>
                 
                 <label for="lookback">Lookback Period (bars):</label>
-                <input type="number" id="lookback" value="1500" min="100" max="10000">
+                <input type="number" id="lookback" value="3500" min="100" max="10000">
                 <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
                     ROC calculation window (e.g., 1500 = ~25 hours at 1-min bars)
                 </p>
@@ -276,10 +298,66 @@
                 </p>
                 
                 <label for="transaction-cost">Transaction Cost (%):</label>
-                <input type="number" id="transaction-cost" value="0.1" step="0.01" min="0" max="10">
+                <input type="number" id="transaction-cost" value="0.01" step="0.01" min="0" max="10">
                 <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
                     Cost applied to each trade (e.g., 0.1 = 0.1% per trade)
                 </p>
+                
+                <label for="min-holding-periods">Min Holding Periods (bars):</label>
+                <input type="number" id="min-holding-periods" value="240" min="0" max="10000">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    Minimum bars to hold before allowing allocation switch (0 = disabled)
+                </p>
+                
+                <label for="switch-threshold">Switch Threshold (%):</label>
+                <input type="number" id="switch-threshold" value="0" step="0.01" min="0" max="100">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    New asset must be this % better than current to switch (0 = disabled)
+                </p>
+                
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+                
+                <h3 style="color: #4ecca3; font-size: 1rem; margin-bottom: 12px;">RSI Filters (Optional)</h3>
+                
+                <label for="rsi-period">RSI Period (bars):</label>
+                <input type="number" id="rsi-period" value="14" min="1" max="100">
+                <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    Lookback period for RSI calculation (default: 14)
+                </p>
+                
+                <div style="background: rgba(78, 204, 163, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                    <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <input type="checkbox" id="use-rsi-entry-filter" style="width: auto; margin-right: 8px; accent-color: #4ecca3;">
+                        <span style="color: #e0e0e0; font-size: 0.9rem;">Enable RSI Entry Filter</span>
+                    </label>
+                    <label for="rsi-entry-max" style="margin-bottom: 4px;">Max RSI to Enter:</label>
+                    <input type="number" id="rsi-entry-max" value="30" step="1" min="0" max="100">
+                    <p style="font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 0;">
+                        Only enter when asset RSI is below this value (oversold)
+                    </p>
+                </div>
+                
+                <div style="background: rgba(78, 204, 163, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                    <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <input type="checkbox" id="use-rsi-entry-queue" style="width: auto; margin-right: 8px; accent-color: #4ecca3;">
+                        <span style="color: #e0e0e0; font-size: 0.9rem;">Use Pending Queue (with RSI Entry)</span>
+                    </label>
+                    <p style="font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 0;">
+                        Queue blocked assets and enter when RSI drops. Pick lowest RSI, flush queue on entry.
+                    </p>
+                </div>
+                
+                <div style="background: rgba(78, 204, 163, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                    <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <input type="checkbox" id="use-rsi-diff-filter" style="width: auto; margin-right: 8px; accent-color: #4ecca3;">
+                        <span style="color: #e0e0e0; font-size: 0.9rem;">Enable RSI Difference Filter</span>
+                    </label>
+                    <label for="rsi-diff-threshold" style="margin-bottom: 4px;">Min RSI Difference:</label>
+                    <input type="number" id="rsi-diff-threshold" value="10" step="1" min="0" max="100">
+                    <p style="font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 0;">
+                        Switch only when current asset RSI - target asset RSI >= threshold
+                    </p>
+                </div>
                 
                 <button class="btn" id="run-btn" onclick="runBacktest()" disabled>
                     Run Backtest
@@ -296,6 +374,25 @@
             <div class="card">
                 <h2 class="card-title">Performance Metrics</h2>
                 <div id="metrics-grid" class="metrics-grid"></div>
+            </div>
+            
+            <div class="card">
+                <h2 class="card-title">Asset Performance</h2>
+                <table class="asset-table">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Total Return</th>
+                            <th>Max Drawdown</th>
+                            <th>Sharpe</th>
+                            <th>Candles</th>
+                            <th>% Alloc</th>
+                            <th>Strat Return</th>
+                            <th># Entries</th>
+                        </tr>
+                    </thead>
+                    <tbody id="asset-metrics-body"></tbody>
+                </table>
             </div>
             
             <div class="grid-2">
@@ -319,11 +416,47 @@
                     <img id="chart-sharpe" src="" alt="Returns Distribution Chart">
                 </div>
             </div>
+            
+            <div id="trades-section" class="card" style="display: none;">
+                <h2 class="card-title">Trade History</h2>
+                <button class="btn" id="show-trades-btn" onclick="loadTrades()" style="max-width: 200px; margin-bottom: 16px;">
+                    Show Trades
+                </button>
+                <div id="trades-container" style="display: none;">
+                    <p style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">
+                        Showing <span id="trades-count">0</span> round-trip trades
+                    </p>
+                    <div style="max-height: 500px; overflow-y: auto;">
+                        <table class="asset-table">
+                            <thead>
+                                <tr>
+                                    <th>Asset</th>
+                                    <th>Entry Date</th>
+                                    <th>Entry Price</th>
+                                    <th>Entry Qty</th>
+                                    <th>Exit Date</th>
+                                    <th>Exit Price</th>
+                                    <th>Exit Qty</th>
+                                    <th>Return %</th>
+                                    <th>Max DD %</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="trades-loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Computing trades...</p>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         let availableAssets = [];
+        let currentRunId = null;
         
         async function loadFiles() {
             try {
@@ -435,6 +568,14 @@
             const defaultAsset = document.getElementById('default-asset').value;
             const absMomentumThreshold = parseFloat(document.getElementById('abs-momentum-threshold').value);
             const transactionCost = parseFloat(document.getElementById('transaction-cost').value);
+            const minHoldingPeriods = parseInt(document.getElementById('min-holding-periods').value);
+            const switchThreshold = parseFloat(document.getElementById('switch-threshold').value);
+            const rsiPeriod = parseInt(document.getElementById('rsi-period').value);
+            const useRsiEntryFilter = document.getElementById('use-rsi-entry-filter').checked;
+            const rsiEntryMax = parseFloat(document.getElementById('rsi-entry-max').value);
+            const useRsiEntryQueue = document.getElementById('use-rsi-entry-queue').checked;
+            const useRsiDiffFilter = document.getElementById('use-rsi-diff-filter').checked;
+            const rsiDiffThreshold = parseFloat(document.getElementById('rsi-diff-threshold').value);
             
             if (!filename || selectedAssets.length === 0) {
                 showError('Please select a file and at least one asset');
@@ -458,7 +599,15 @@
                         default_asset: defaultAsset,
                         top_n: topN,
                         abs_momentum_threshold: absMomentumThreshold,
-                        transaction_cost_pct: transactionCost
+                        transaction_cost_pct: transactionCost,
+                        min_holding_periods: minHoldingPeriods,
+                        switch_threshold_pct: switchThreshold,
+                        rsi_period: rsiPeriod,
+                        use_rsi_entry_filter: useRsiEntryFilter,
+                        rsi_entry_max: rsiEntryMax,
+                        use_rsi_entry_queue: useRsiEntryQueue,
+                        use_rsi_diff_filter: useRsiDiffFilter,
+                        rsi_diff_threshold: rsiDiffThreshold
                     })
                 });
                 
@@ -525,13 +674,95 @@
             
             document.getElementById('metrics-grid').innerHTML = metricsHtml;
             
+            let assetTableHtml = '';
+            if (data.asset_metrics) {
+                for (const [asset, am] of Object.entries(data.asset_metrics)) {
+                    assetTableHtml += `
+                        <tr>
+                            <td>${asset}</td>
+                            <td class="${am.total_return >= 0 ? 'positive' : 'negative'}">${am.total_return.toFixed(2)}%</td>
+                            <td class="negative">${am.max_drawdown.toFixed(2)}%</td>
+                            <td>${am.sharpe_ratio.toFixed(2)}</td>
+                            <td>${am.candles_allocated.toLocaleString()}</td>
+                            <td>${am.pct_allocated.toFixed(1)}%</td>
+                            <td class="${am.strat_return >= 0 ? 'positive' : 'negative'}">${am.strat_return.toFixed(2)}%</td>
+                            <td>${am.entries}</td>
+                        </tr>
+                    `;
+                }
+            }
+            document.getElementById('asset-metrics-body').innerHTML = assetTableHtml;
+            
             const timestamp = Date.now();
             document.getElementById('chart-portfolio').src = `/static/charts/${data.charts.portfolio}?t=${timestamp}`;
             document.getElementById('chart-drawdown').src = `/static/charts/${data.charts.drawdown}?t=${timestamp}`;
             document.getElementById('chart-monthly').src = `/static/charts/${data.charts.monthly_returns}?t=${timestamp}`;
             document.getElementById('chart-sharpe').src = `/static/charts/${data.charts.sharpe}?t=${timestamp}`;
             
+            currentRunId = data.run_id;
+            document.getElementById('trades-section').style.display = 'block';
+            document.getElementById('trades-container').style.display = 'none';
+            document.getElementById('trades-body').innerHTML = '';
+            
             document.getElementById('results').classList.add('active');
+        }
+        
+        async function loadTrades() {
+            if (!currentRunId) {
+                showError('No backtest run available');
+                return;
+            }
+            
+            const btn = document.getElementById('show-trades-btn');
+            const loading = document.getElementById('trades-loading');
+            const container = document.getElementById('trades-container');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            container.style.display = 'none';
+            
+            try {
+                const response = await fetch(`/api/run-backtest/${currentRunId}/trades`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to load trades');
+                }
+                
+                displayTrades(data.trades);
+            } catch (err) {
+                showError('Failed to load trades: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+                container.style.display = 'block';
+            }
+        }
+        
+        function displayTrades(trades) {
+            document.getElementById('trades-count').textContent = trades.length;
+            
+            let tableHtml = '';
+            trades.forEach((trade, idx) => {
+                const returnClass = trade.return_pct >= 0 ? 'positive' : 'negative';
+                tableHtml += `
+                    <tr>
+                        <td>${trade.asset}</td>
+                        <td style="font-size: 0.85rem;">${trade.entry_date}</td>
+                        <td>${trade.entry_price.toFixed(4)}</td>
+                        <td>${trade.entry_qty.toFixed(4)}</td>
+                        <td style="font-size: 0.85rem;">${trade.exit_date}</td>
+                        <td>${trade.exit_price.toFixed(4)}</td>
+                        <td>${trade.exit_qty.toFixed(4)}</td>
+                        <td class="${returnClass}">${trade.return_pct.toFixed(2)}%</td>
+                        <td class="negative">${trade.max_dd_pct.toFixed(2)}%</td>
+                        <td>${trade.duration_bars}</td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('trades-body').innerHTML = tableHtml;
+            document.getElementById('trades-container').style.display = 'block';
         }
         
         function showError(message) {
