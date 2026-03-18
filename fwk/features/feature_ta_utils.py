@@ -209,6 +209,36 @@ def numba_roc(prices, period):
     return roc
 
 
+@jit(nopython=True)
+def numba_roc_correct_min(prices, min_index, period):
+    """
+    Compute Rate of Change (ROC) using Numba.
+    ROC = (price - price_N_periods_ago) / price_N_periods_ago * 100
+
+    Args:
+        prices (numpy.ndarray): Array of prices.
+        min_index (numpy.ndarray): Array of the minutes whem the prices were observed, min_index of the candles, is the number of minutes since 01/01/2000
+        period (int): Lookback period in minutes
+
+    Returns:
+        numpy.ndarray: ROC values as percentage.
+    """
+    n = len(prices)
+    roc = np.zeros(n)
+
+    last_min = 0
+    last_index = 0
+
+    for i in range(period, n):
+        if prices[i - period] != 0:
+            for j in range(last_index, i):
+                if min_index[j] >= min_index[i] - period: # try to find the correct past index j to compute roc 
+                    roc[i] = (prices[i] - prices[j]) / prices[j] * 100
+                    last_min = min_index[j]
+                    last_index = j
+                    break
+    return roc
+
 # todo check this
 
 

@@ -14,6 +14,7 @@ from features.feature_ta_utils import (
     rolling_std,
     add_accumulation_distribution_index,
     numba_roc,
+    numba_roc_correct_min,
 )
 from features.f_order_flow import (
     feature_volume_dollar,
@@ -255,6 +256,7 @@ class BaseDataFrame:
             FeatureType.T_AVG_TS_USD_MA_RATIO: self._add_trade_avg_trade_size_dollar_ma_ratio,
             FeatureType.T_TC_MA_RATIO: self._add_trade_trade_count_ma_ratio,
             FeatureType.ROC: self._add_roc,
+            FeatureType.ROC_CORRECT_MIN: self._add_roc_correct_min,
             FeatureType.DAILY_SIGNAL: self._add_daily_signal,
             FeatureType.TOTAL_SIGNAL: self._add_total_signal,
             FeatureType.CTO_LINE: self._add_cto_line,
@@ -438,6 +440,19 @@ class BaseDataFrame:
             name = f"F_roc_{period}_{self.mid_col}_f16"
             new_cols[name] = numba_roc(self.df[self.mid_col].to_numpy(), period)
             self._register_feature(name, FeatureType.ROC)
+        self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
+
+    def _add_roc_correct_min(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
+        periods = periods or [14, 60, 240]
+        new_cols = {}
+        for period in periods:
+            name = f"F_roc_correct_min_{period}_{self.mid_col}_f16"
+            new_cols[name] = numba_roc_correct_min(
+                self.df[self.mid_col].to_numpy(),
+                self.df[g_index_col].to_numpy(),
+                period,
+            )
+            self._register_feature(name, FeatureType.ROC_CORRECT_MIN)
         self.df = pd.concat([self.df, pd.DataFrame(new_cols, index=self.df.index)], axis=1)
 
     def _add_ema(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:

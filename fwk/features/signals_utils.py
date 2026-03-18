@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def map_P_to_N(df, column):
+def map_P_to_N(df, column, val1, val2):
     """
     Map 'P' values to 'N' in a specified column.
     
@@ -13,7 +13,7 @@ def map_P_to_N(df, column):
     pd.DataFrame: Dataframe with transformed values
     """
     df = df.copy()
-    df[column] = df[column].replace('P', 'N')
+    df[column] = df[column].replace(val1, val2)
     return df
 
 def map_minus1_0_1_to_0_1_2(df, column):

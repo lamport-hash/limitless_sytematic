@@ -1,10 +1,8 @@
 """Strategy modules for allocation and trading logic."""
 
 from strat.strat_backtest import (
-    ETF_LIST,
     compute_dual_momentum,
     get_current_allocation,
-    create_test_bundle_with_multiple_etfs,
     create_test_bundle_with_allocations,
 )
 from strat.strat_analysis import (
@@ -37,11 +35,9 @@ from strat.strat_macd_ema import (
 )
 
 __all__ = [
-    "ETF_LIST",
     "ETF_COLORS",
     "compute_dual_momentum",
     "get_current_allocation",
-    "create_test_bundle_with_multiple_etfs",
     "create_test_bundle_with_allocations",
     "print_allocation_summary",
     "print_metrics",

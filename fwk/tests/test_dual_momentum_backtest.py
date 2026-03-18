@@ -19,7 +19,7 @@ from backtest.dual_momentum_backtest import (
     save_backtest_diagnostics,
 )
 from core.data_org import BUNDLE_DIR
-from strat.strat_backtest import ETF_LIST, compute_dual_momentum, create_test_bundle_with_allocations
+from strat.strat_backtest import compute_dual_momentum, create_test_bundle_with_allocations
 from strat.strat_analysis import compute_period_returns, print_metrics
 from strat.strat_visualise import (
     plot_pnl_histogram,
@@ -29,7 +29,7 @@ from strat.strat_visualise import (
     plot_monthly_returns_chart,
 )
 
-
+ETF_LIST = ['QQQ', 'SPY', 'TLT', 'GLD', 'VWO']
 INPUT_FILE = BUNDLE_DIR / "test_etf_features_bundle.parquet"
 OUTPUT_DIR = Path(__file__).parent / "output"
 

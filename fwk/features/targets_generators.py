@@ -24,7 +24,7 @@ from core.enums import (
     g_lqa_vol_col,
     g_precision,
 )
-from merger.merger_utils import g_yaml_t_classification
+from merger.merger_utils import g_yaml_t_classification, g_yaml_t_regression
 
 
 logger = logging.getLogger(__name__)
@@ -170,6 +170,52 @@ def gen_perfect_stoploss_signal_class(
     return signals, indicator_name
 
 
+def gen_avg_mid_performance(
+    df: pd.DataFrame,
+    close_col: str,
+    mid_col: str,
+    N: int,
+    P: int,
+) -> tuple[pd.Series, str]:
+    """
+    Calculate average mid performance from N candles ahead to P candles ahead.
+
+    For each candle at index i, computes the average return of mid prices
+    relative to the current close price over the window [i+N, i+P].
+
+    Args:
+        df: DataFrame containing close and mid price columns.
+        close_col: Column name for close price.
+        mid_col: Column name for mid price.
+        N: Start offset (candles ahead) - inclusive.
+        P: End offset (candles ahead) - inclusive.
+
+    Returns:
+        tuple[pd.Series, str]:
+            - pd.Series: Average mid returns. Last P rows are NaN.
+            - str: Indicator name, e.g., "AvgMidPerf_N60_P240"
+    """
+    if N >= P:
+        raise ValueError(f"N ({N}) must be less than P ({P})")
+    if N < 1:
+        raise ValueError(f"N ({N}) must be at least 1")
+
+    closes = df[close_col].values
+    mids = df[mid_col].values
+    n_rows = len(df)
+
+    result = np.full(n_rows, np.nan, dtype=np.float64)
+
+    for i in range(n_rows - P):
+        current_close = closes[i]
+        future_mids = mids[i + N : i + P + 1]
+        returns = (future_mids - current_close) / current_close
+        result[i] = np.mean(returns)
+
+    indicator_name = f"AvgMidPerf_N{N}_P{P}"
+    return pd.Series(result, index=df.index), indicator_name
+
+
 def add_min_max_log_returns(p_df, N, col_name, valid_col_name, is_log=True):
     """
     Adds minimum and maximum returns over the next N periods to the DataFrame.
@@ -243,9 +289,18 @@ def add_min_max_log_returns(p_df, N, col_name, valid_col_name, is_log=True):
 
 
 # Function mapping — add yours here
-TARGETS_FUNCTIONS = {
+TARGETS_FUNCTIONS_CLASSIFICATION = {
     "gen_perfect_signal_class": gen_perfect_signal_class,
     "gen_perfect_stoploss_signal_class": gen_perfect_stoploss_signal_class,
+}
+
+TARGETS_FUNCTIONS_REGRESSION = {
+    "gen_avg_mid_performance": gen_avg_mid_performance,
+}
+
+TARGETS_FUNCTIONS = {
+    **TARGETS_FUNCTIONS_CLASSIFICATION,
+    **TARGETS_FUNCTIONS_REGRESSION,
 }
 
 
@@ -318,13 +373,33 @@ def setup_framework_indicators(config_yaml, df, target_df):
         config = yaml.load(config_yaml)
     else:
         config = config_yaml
-    classification_targets = config.get(g_yaml_t_classification, {})
 
-    if classification_targets == {}:
+    classification_targets = config.get(g_yaml_t_classification, {})
+    regression_targets = config.get(g_yaml_t_regression, {})
+
+    if classification_targets == {} and regression_targets == {}:
         return target_df
 
     for target_name, settings in classification_targets.items():
         target_type = settings.get("type")
+        function_name = settings.get("function", "")
+        if function_name not in TARGETS_FUNCTIONS_CLASSIFICATION:
+            print(f"⚠️ Function '{function_name}' not in classification functions")
+            continue
+
+        if target_type == "single_asset":
+            target_df = compute_single_asset_target_from_dict(df, target_name, settings, target_df)
+        elif target_type == "spread_asset":
+            target_df = compute_spread_asset_target_from_dict(df, target_name, settings, target_df)
+        else:
+            print(f"⚠️ Unknown target type: {target_type}")
+
+    for target_name, settings in regression_targets.items():
+        target_type = settings.get("type")
+        function_name = settings.get("function", "")
+        if function_name not in TARGETS_FUNCTIONS_REGRESSION:
+            print(f"⚠️ Function '{function_name}' not in regression functions")
+            continue
 
         if target_type == "single_asset":
             target_df = compute_single_asset_target_from_dict(df, target_name, settings, target_df)

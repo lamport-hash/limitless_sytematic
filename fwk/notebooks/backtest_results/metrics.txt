@@ -1,0 +1,56 @@
+============================================================
+VECTORBT STRATEGY PERFORMANCE METRICS
+============================================================
+
+total_return: -0.003092
+total_return_pct: -0.309196
+pnl_per_bar: -0.006683
+pnl_per_month: -4.878555
+cum_pnl_final: -234.170623
+final_portfolio_value: 99690.804377
+max_drawdown: -0.002343
+max_dd_pct: -0.234346
+sharpe_ratio: -0.998886
+calmar_ratio: -0.330223
+profit_factor: 0.000000
+win_rate: 0.000000
+n_bars: 35041
+n_positive_bars: 0
+n_negative_bars: 3
+avg_win: 0.000000
+avg_loss: -154.597812
+avg_win_loss_ratio: 0.000000
+n_trades: 2
+
+============================================================
+ADDITIONAL VECTORBT METRICS
+============================================================
+
+Start: 2020-01-01 00:00:00
+End: 2023-12-31 00:00:00
+Period: 1460 days 01:00:00
+Start Value: 100000.0
+End Value: 99690.8043765348
+Total Return [%]: -0.3091956234652098
+Benchmark Return [%]: 0.07763611302380458
+Max Gross Exposure [%]: 50.03754066488383
+Total Fees Paid: 199.83987862992745
+Max Drawdown [%]: 0.2343464418832312
+Max Drawdown Duration: 1460 days 00:00:00
+Total Trades: 2
+Total Closed Trades: 2
+Total Open Trades: 0
+Open Trade PnL: 0.0
+Win Rate [%]: 0.0
+Best Trade [%]: -0.30122994522175683
+Worst Trade [%]: -0.3173304467447639
+Avg Winning Trade [%]: nan
+Avg Losing Trade [%]: -0.30928019598326034
+Avg Winning Trade Duration: NaT
+Avg Losing Trade Duration: 0 days 01:00:00
+Profit Factor: 0.0
+Expectancy: -154.5978117326003
+Sharpe Ratio: -0.9988859219163372
+Calmar Ratio: -0.33022258154423856
+Omega Ratio: 0.0
+Sortino Ratio: -0.9988432906761143

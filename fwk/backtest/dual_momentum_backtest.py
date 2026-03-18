@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from strat.strat_backtest import ETF_LIST
 
 
 OHLC_COLS = {
@@ -60,111 +59,129 @@ class PerformanceMetrics:
     n_trades: int
 
 
+
 def generate_orders_from_allocations(
     p_df: pd.DataFrame,
-    p_rebalance_threshold: float = 0.05,
+    p_asset_list=['QQQ', 'SPY', 'TLT', 'GLD', 'VWO']
 ) -> Tuple[pd.DataFrame, List[Order]]:
-    """
-    Generate orders from allocation DataFrame.
-
-    Args:
-        p_df: DataFrame with A_*_alloc columns (output from compute_dual_momentum)
-        p_rebalance_threshold: Minimum allocation change to trigger rebalance
-
-    Returns:
-        Tuple of (orders_df, orders_list)
-    """
-    df = p_df.copy()
-
-    alloc_cols = [f"A_{etf}_alloc" for etf in ETF_LIST]
-    close_cols = [f"{etf}_{OHLC_COLS['close']}" for etf in ETF_LIST]
-
-    for col in alloc_cols + close_cols:
-        if col not in df.columns:
-            raise ValueError(f"Required column not found: {col}")
-
+    # Don't copy the entire DataFrame - work with references
+    # df = p_df.copy()  # REMOVE THIS
+    
+    alloc_cols = [f"A_{etf}_alloc" for etf in p_asset_list]
+    close_cols = [f"{etf}_{OHLC_COLS['close']}" for etf in p_asset_list]
+    
+    # Extract numpy arrays for vectorized operations
+    alloc_data = p_df[alloc_cols].values
+    close_data = p_df[close_cols].values
+    timestamps = p_df.index.values
+    
     orders = []
-    current_alloc = np.zeros(len(ETF_LIST))
+    current_allocs = np.zeros(len(p_asset_list))
     portfolio_value = 1.0
-
-    for i, (idx, row) in enumerate(df.iterrows()):
-        target_alloc = np.array([row[col] for col in alloc_cols])
-        close_prices = np.array([row[col] for col in close_cols])
-
-        if i == 0:
-            for j, etf in enumerate(ETF_LIST):
-                if target_alloc[j] > 0:
-                    order = Order(
-                        timestamp=int(idx),
-                        etf=etf,
-                        direction=1.0,
-                        size=target_alloc[j] * portfolio_value / close_prices[j]
-                        if close_prices[j] > 0
-                        else 0,
-                        price=close_prices[j],
-                        allocation=target_alloc[j],
-                    )
-                    orders.append(order)
-            current_alloc = target_alloc.copy()
+    epsilon = 1e-9
+    
+    n_assets = len(p_asset_list)
+    
+    # Pre-calculate which assets changed at each step
+    # This avoids the inner loop for most cases
+    for i in range(len(p_df)):
+        target_vals = alloc_data[i]
+        
+        # Find assets that changed significantly
+        diff_mask = np.abs(target_vals - current_allocs) > epsilon
+        changed_indices = np.where(diff_mask)[0]
+        
+        if len(changed_indices) == 0:
             continue
-
-        allocation_change = np.abs(target_alloc - current_alloc)
-        needs_rebalance = np.any(allocation_change > p_rebalance_threshold)
-
-        if needs_rebalance:
-            for j, etf in enumerate(ETF_LIST):
-                if allocation_change[j] > p_rebalance_threshold:
-                    if target_alloc[j] > current_alloc[j]:
-                        order = Order(
-                            timestamp=int(idx),
-                            etf=etf,
-                            direction=1.0,
-                            size=(target_alloc[j] - current_alloc[j])
-                            * portfolio_value
-                            / close_prices[j]
-                            if close_prices[j] > 0
-                            else 0,
-                            price=close_prices[j],
-                            allocation=target_alloc[j],
-                        )
-                        orders.append(order)
-                    elif target_alloc[j] < current_alloc[j]:
-                        order = Order(
-                            timestamp=int(idx),
-                            etf=etf,
-                            direction=-1.0,
-                            size=(current_alloc[j] - target_alloc[j])
-                            * portfolio_value
-                            / close_prices[j]
-                            if close_prices[j] > 0
-                            else 0,
-                            price=close_prices[j],
-                            allocation=target_alloc[j],
-                        )
-                        orders.append(order)
-
-            current_alloc = target_alloc.copy()
-
-    orders_df = pd.DataFrame(
-        [
-            {
-                "timestamp": o.timestamp,
-                "etf": o.etf,
-                "direction": o.direction,
-                "size": o.size,
-                "price": o.price,
-                "allocation": o.allocation,
-            }
+        
+        # Process only changed assets
+        for j in changed_indices:
+            target_val = target_vals[j]
+            current_val = current_allocs[j]
+            diff = target_val - current_val
+            
+            price = close_data[i, j]
+            
+            if price > 0:
+                orders.append(Order(
+                    timestamp=int(timestamps[i]),
+                    etf=p_asset_list[j],
+                    direction=1.0 if diff > 0 else -1.0,
+                    size=abs(diff) * portfolio_value / price,
+                    price=price,
+                    allocation=target_val,
+                ))
+            
+            current_allocs[j] = target_val
+    
+    # Create DataFrame more efficiently
+    if orders:
+        # Use list comprehension for better performance
+        orders_data = [
+            (o.timestamp, o.etf, o.direction, o.size, o.price, o.allocation)
             for o in orders
         ]
-    )
-
+        orders_df = pd.DataFrame(
+            orders_data,
+            columns=['timestamp', 'etf', 'direction', 'size', 'price', 'allocation']
+        )
+    else:
+        orders_df = pd.DataFrame(columns=['timestamp', 'etf', 'direction', 'size', 'price', 'allocation'])
+    
     return orders_df, orders
+    
+def generate_orders_from_allocations_vectorized(
+    p_df: pd.DataFrame,
+    p_asset_list=['QQQ', 'SPY', 'TLT', 'GLD', 'VWO']
+) -> pd.DataFrame:
+    """
+    Fully vectorized version - much faster but doesn't create Order objects
+    """
+    alloc_cols = [f"A_{etf}_alloc" for etf in p_asset_list]
+    close_cols = [f"{etf}_{OHLC_COLS['close']}" for etf in p_asset_list]
+    
+    # Get the allocation changes
+    alloc_data = p_df[alloc_cols].values
+    alloc_changes = np.diff(alloc_data, axis=0, prepend=alloc_data[0:1])
+    
+    # Find where significant changes occur
+    epsilon = 1e-9
+    significant_changes = np.abs(alloc_changes) > epsilon
+    
+    # Get indices of changes
+    rows, cols = np.where(significant_changes)
+    
+    if len(rows) == 0:
+        return pd.DataFrame()
+    
+    # Extract data for all changes at once
+    timestamps = p_df.index.values[rows]
+    etfs = [p_asset_list[col] for col in cols]
+    directions = np.where(alloc_changes[rows, cols] > 0, 1.0, -1.0)
+    sizes = np.abs(alloc_changes[rows, cols])
+    prices = close_data[rows, cols]
+    allocations = alloc_data[rows, cols]
+    
+    # Filter out zero prices
+    valid_prices = prices > 0
+    
+    # Create DataFrame directly
+    orders_df = pd.DataFrame({
+        'timestamp': timestamps[valid_prices],
+        'etf': [etfs[i] for i in range(len(etfs)) if valid_prices[i]],
+        'direction': directions[valid_prices],
+        'size': sizes[valid_prices],
+        'price': prices[valid_prices],
+        'allocation': allocations[valid_prices]
+    })
+    
+    return orders_df
 
 
 def compute_strategy_performance(
     p_df: pd.DataFrame,
     p_orders_df: pd.DataFrame,
+    p_asset_list = ['QQQ', 'SPY', 'TLT', 'GLD', 'VWO']
 ) -> Tuple[Dict, pd.DataFrame]:
     """
     Compute strategy performance from trade-by-trade P&L.
@@ -176,9 +193,9 @@ def compute_strategy_performance(
     Returns:
         Tuple of (metrics_dict, result_df)
     """
-    close_col_map = {etf: f"{etf}_{OHLC_COLS['close']}" for etf in ETF_LIST}
+    close_col_map = {etf: f"{etf}_{OHLC_COLS['close']}" for etf in p_asset_list}
 
-    positions = {etf: {"entry_price": None, "entry_idx": None} for etf in ETF_LIST}
+    positions = {etf: {"entry_price": None, "entry_idx": None} for etf in p_asset_list}
     pnl_list = []
     portfolio_value = 1.0
     bar_pnl = np.zeros(len(p_df))

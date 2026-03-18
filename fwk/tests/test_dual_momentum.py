@@ -13,8 +13,7 @@ from core.data_org import BUNDLE_DIR
 from strat.strat_backtest import (
     ETF_LIST,
     compute_dual_momentum,
-    get_current_allocation,
-    create_test_bundle_with_multiple_etfs,
+    get_current_allocation
 )
 from strat.strat_analysis import print_allocation_summary
 from strat.strat_visualise import plot_normalized_prices, create_allocation_gif

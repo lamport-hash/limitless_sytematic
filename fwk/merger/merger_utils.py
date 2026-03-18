@@ -32,6 +32,7 @@ from core.enums import (
 
 
 g_yaml_t_classification = "t_classification"
+g_yaml_t_regression = "t_regression"
 
 
 # because of parquet not knowing float_16

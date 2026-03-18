@@ -21,7 +21,8 @@ from bundler.feature_bundler import (
     compute_asset_bundle,
     DEFAULT_FEATURE_TYPES,
 )
-from strat.strat_backtest import ETF_LIST
+
+ETF_LIST = ['QQQ', 'SPY', 'TLT', 'GLD', 'VWO']
 
 
 DATA_FREQ = MktDataTFreq.CANDLE_1HOUR
