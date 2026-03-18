@@ -22,6 +22,7 @@ from ui_strat.backtest_runner import (
     load_parquet_file,
     run_backtest,
     compute_trades_from_orders,
+    compute_current_positions,
 )
 
 warnings.filterwarnings('ignore')
@@ -63,6 +64,13 @@ class BacktestResponse(BaseModel):
     asset_metrics: Dict
     charts: Dict[str, str]
     orders_count: int
+    entries_count: int
+    exits_count: int
+    entries_safe: int
+    entries_risky: int
+    exits_safe: int
+    exits_risky: int
+    current_positions: List[Dict]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -138,12 +146,25 @@ async def api_run_backtest(request: BacktestRequest):
             'assets': request.selected_assets
         }
         
+        current_positions = compute_current_positions(
+            result.get('orders_df'),
+            result.get('p_df'),
+            request.selected_assets
+        )
+        
         return BacktestResponse(
             run_id=run_id,
             metrics=result["metrics"],
             asset_metrics=result["asset_metrics"],
             charts=result["charts"],
-            orders_count=result["orders_count"]
+            orders_count=result["orders_count"],
+            entries_count=result["entries_count"],
+            exits_count=result["exits_count"],
+            entries_safe=result["entries_safe"],
+            entries_risky=result["entries_risky"],
+            exits_safe=result["exits_safe"],
+            exits_risky=result["exits_risky"],
+            current_positions=current_positions
         )
     except Exception as e:
         import traceback
@@ -165,6 +186,57 @@ async def get_backtest_trades(run_id: str):
         trades = compute_trades_from_orders(orders_df, p_df, assets)
         
         return {"trades": trades, "count": len(trades)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/run-backtest/{run_id}/allocations")
+async def get_backtest_allocations(run_id: str):
+    try:
+        if run_id not in BACKTEST_CACHE:
+            raise HTTPException(status_code=404, detail="Run ID not found or expired")
+        
+        cache_entry = BACKTEST_CACHE[run_id]
+        p_df = cache_entry.get('p_df')
+        assets = cache_entry.get('assets', [])
+        
+        if p_df is None or len(p_df) == 0:
+            return {"allocations": [], "count": 0}
+        
+        alloc_cols = [f"A_{asset}_alloc" for asset in assets if f"A_{asset}_alloc" in p_df.columns]
+        
+        df_alloc = p_df[['i_minute_i'] + alloc_cols].copy()
+        
+        from ui_strat.backtest_runner import minutes_to_datetime
+        
+        allocations = []
+        prev_allocs = None
+        
+        for idx, row in df_alloc.iterrows():
+            current_allocs = {col: float(row[col]) for col in alloc_cols}
+            
+            if prev_allocs is None or any(abs(current_allocs[col] - prev_allocs.get(col, 0)) > 1e-6 for col in alloc_cols):
+                minute_val = int(row['i_minute_i'])
+                dt = minutes_to_datetime(minute_val)
+                
+                alloc_row = {
+                    'datetime': dt.strftime('%Y-%m-%d %H:%M'),
+                    'i_minute': minute_val
+                }
+                for asset in assets:
+                    col = f"A_{asset}_alloc"
+                    if col in p_df.columns:
+                        alloc_row[asset] = float(round(row[col], 4))
+                
+                allocations.append(alloc_row)
+            
+            prev_allocs = current_allocs
+        
+        return {"allocations": allocations, "count": len(allocations)}
     except HTTPException:
         raise
     except Exception as e:

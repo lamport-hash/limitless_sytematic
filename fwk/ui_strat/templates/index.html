@@ -371,6 +371,24 @@
         </div>
         
         <div id="results" class="results">
+            <div id="positions-card" class="card" style="display: none;">
+                <h2 class="card-title">Current Positions</h2>
+                <table class="asset-table">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Entry Date</th>
+                            <th>Entry Price</th>
+                            <th>Current Price</th>
+                            <th>Quantity</th>
+                            <th>Market Value</th>
+                            <th>Unrealized PnL %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positions-body"></tbody>
+                </table>
+            </div>
+            
             <div class="card">
                 <h2 class="card-title">Performance Metrics</h2>
                 <div id="metrics-grid" class="metrics-grid"></div>
@@ -392,6 +410,7 @@
                         </tr>
                     </thead>
                     <tbody id="asset-metrics-body"></tbody>
+                    <tfoot id="asset-metrics-footer" style="border-top: 2px solid #4ecca3; font-weight: 600;"></tfoot>
                 </table>
             </div>
             
@@ -449,6 +468,30 @@
                 <div id="trades-loading" class="loading" style="display: none;">
                     <div class="spinner"></div>
                     <p>Computing trades...</p>
+                </div>
+            </div>
+            
+            <div id="allocations-section" class="card" style="display: none;">
+                <h2 class="card-title">Allocation History</h2>
+                <button class="btn" id="show-allocations-btn" onclick="loadAllocations()" style="max-width: 200px; margin-bottom: 16px;">
+                    Show Allocations
+                </button>
+                <div id="allocations-container" style="display: none;">
+                    <p style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">
+                        Showing <span id="allocations-count">0</span> allocation changes
+                    </p>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        <table class="asset-table" id="allocations-table">
+                            <thead>
+                                <tr id="allocations-header"></tr>
+                            </thead>
+                            <tbody id="allocations-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="allocations-loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading allocations...</p>
                 </div>
             </div>
         </div>
@@ -536,6 +579,8 @@
                 select.value = 'SHV';
             } else if (assets.includes('TLT')) {
                 select.value = 'TLT';
+            } else if (assets.includes('GLD')) {
+                select.value = 'GLD';
             } else if (assets.length > 0) {
                 select.value = assets[0];
             }
@@ -663,6 +708,22 @@
                     <div class="metric-value">${data.orders_count}</div>
                 </div>
                 <div class="metric-card">
+                    <div class="metric-label">Entries (Safe)</div>
+                    <div class="metric-value" style="color: #4ecca3; font-size: 1.1rem;">${data.entries_safe}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Entries (Risky)</div>
+                    <div class="metric-value" style="color: #3498db; font-size: 1.1rem;">${data.entries_risky}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Exits (Safe)</div>
+                    <div class="metric-value" style="color: #f39c12; font-size: 1.1rem;">${data.exits_safe}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Exits (Risky)</div>
+                    <div class="metric-value" style="color: #e74c3c; font-size: 1.1rem;">${data.exits_risky}</div>
+                </div>
+                <div class="metric-card">
                     <div class="metric-label">Start Date</div>
                     <div class="metric-value" style="font-size: 1rem;">${metrics.start_date}</div>
                 </div>
@@ -675,8 +736,21 @@
             document.getElementById('metrics-grid').innerHTML = metricsHtml;
             
             let assetTableHtml = '';
+            let nAssets = 0;
+            let sumTotalReturn = 0, sumMaxDD = 0, sumSharpe = 0;
+            let sumCandles = 0, sumPctAlloc = 0, sumStratReturn = 0, sumEntries = 0;
+            
             if (data.asset_metrics) {
                 for (const [asset, am] of Object.entries(data.asset_metrics)) {
+                    nAssets++;
+                    sumTotalReturn += am.total_return;
+                    sumMaxDD += am.max_drawdown;
+                    sumSharpe += am.sharpe_ratio;
+                    sumCandles += am.candles_allocated;
+                    sumPctAlloc += am.pct_allocated;
+                    sumStratReturn += am.strat_return;
+                    sumEntries += am.entries;
+                    
                     assetTableHtml += `
                         <tr>
                             <td>${asset}</td>
@@ -693,16 +767,62 @@
             }
             document.getElementById('asset-metrics-body').innerHTML = assetTableHtml;
             
+            if (nAssets > 0) {
+                const avgTotalReturn = sumTotalReturn / nAssets;
+                const avgMaxDD = sumMaxDD / nAssets;
+                const avgSharpe = sumSharpe / nAssets;
+                
+                const footerHtml = `
+                    <tr style="background: rgba(78, 204, 163, 0.1);">
+                        <td style="color: #4ecca3;">TOTAL/AVG</td>
+                        <td class="${avgTotalReturn >= 0 ? 'positive' : 'negative'}">${avgTotalReturn.toFixed(2)}%</td>
+                        <td class="negative">${avgMaxDD.toFixed(2)}%</td>
+                        <td>${avgSharpe.toFixed(2)}</td>
+                        <td>${sumCandles.toLocaleString()}</td>
+                        <td>${sumPctAlloc.toFixed(1)}%</td>
+                        <td class="${sumStratReturn >= 0 ? 'positive' : 'negative'}">${sumStratReturn.toFixed(2)}%</td>
+                        <td>${sumEntries}</td>
+                    </tr>
+                `;
+                document.getElementById('asset-metrics-footer').innerHTML = footerHtml;
+            }
+            
             const timestamp = Date.now();
             document.getElementById('chart-portfolio').src = `/static/charts/${data.charts.portfolio}?t=${timestamp}`;
             document.getElementById('chart-drawdown').src = `/static/charts/${data.charts.drawdown}?t=${timestamp}`;
             document.getElementById('chart-monthly').src = `/static/charts/${data.charts.monthly_returns}?t=${timestamp}`;
             document.getElementById('chart-sharpe').src = `/static/charts/${data.charts.sharpe}?t=${timestamp}`;
             
+            if (data.current_positions && data.current_positions.length > 0) {
+                let positionsHtml = '';
+                data.current_positions.forEach(pos => {
+                    const pnlClass = pos.unrealized_pnl_pct >= 0 ? 'positive' : 'negative';
+                    positionsHtml += `
+                        <tr>
+                            <td>${pos.asset}</td>
+                            <td style="font-size: 0.85rem;">${pos.entry_date}</td>
+                            <td>${pos.entry_price.toFixed(4)}</td>
+                            <td>${pos.current_price.toFixed(4)}</td>
+                            <td>${pos.quantity.toFixed(4)}</td>
+                            <td>${pos.market_value.toFixed(2)}</td>
+                            <td class="${pnlClass}">${pos.unrealized_pnl_pct.toFixed(2)}%</td>
+                        </tr>
+                    `;
+                });
+                document.getElementById('positions-body').innerHTML = positionsHtml;
+                document.getElementById('positions-card').style.display = 'block';
+            } else {
+                document.getElementById('positions-card').style.display = 'none';
+            }
+            
             currentRunId = data.run_id;
             document.getElementById('trades-section').style.display = 'block';
             document.getElementById('trades-container').style.display = 'none';
             document.getElementById('trades-body').innerHTML = '';
+            
+            document.getElementById('allocations-section').style.display = 'block';
+            document.getElementById('allocations-container').style.display = 'none';
+            document.getElementById('allocations-body').innerHTML = '';
             
             document.getElementById('results').classList.add('active');
         }
@@ -763,6 +883,73 @@
             
             document.getElementById('trades-body').innerHTML = tableHtml;
             document.getElementById('trades-container').style.display = 'block';
+        }
+        
+        async function loadAllocations() {
+            if (!currentRunId) {
+                showError('No backtest run available');
+                return;
+            }
+            
+            const btn = document.getElementById('show-allocations-btn');
+            const loading = document.getElementById('allocations-loading');
+            const container = document.getElementById('allocations-container');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            container.style.display = 'none';
+            
+            try {
+                const response = await fetch(`/api/run-backtest/${currentRunId}/allocations`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to load allocations');
+                }
+                
+                displayAllocations(data.allocations);
+            } catch (err) {
+                showError('Failed to load allocations: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+                container.style.display = 'block';
+            }
+        }
+        
+        function displayAllocations(allocations) {
+            if (!allocations || allocations.length === 0) {
+                document.getElementById('allocations-body').innerHTML = '<tr><td colspan="100">No allocation data</td></tr>';
+                document.getElementById('allocations-container').style.display = 'block';
+                return;
+            }
+            
+            document.getElementById('allocations-count').textContent = allocations.length;
+            
+            const firstRow = allocations[0];
+            const assetKeys = Object.keys(firstRow).filter(k => k !== 'datetime' && k !== 'i_minute');
+            
+            let headerHtml = '<th>Datetime</th><th>i_minute</th>';
+            assetKeys.forEach(asset => {
+                headerHtml += `<th>${asset}</th>`;
+            });
+            document.getElementById('allocations-header').innerHTML = headerHtml;
+            
+            let tableHtml = '';
+            allocations.forEach(row => {
+                tableHtml += `<tr>`;
+                tableHtml += `<td style="font-size: 0.85rem;">${row.datetime}</td>`;
+                tableHtml += `<td>${row.i_minute}</td>`;
+                assetKeys.forEach(asset => {
+                    const val = row[asset];
+                    const valClass = val > 0 ? 'positive' : '';
+                    tableHtml += `<td class="${valClass}">${val.toFixed(4)}</td>`;
+                });
+                tableHtml += `</tr>`;
+            });
+            
+            document.getElementById('allocations-body').innerHTML = tableHtml;
+            document.getElementById('allocations-container').style.display = 'block';
         }
         
         function showError(message) {

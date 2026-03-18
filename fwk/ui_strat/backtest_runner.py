@@ -204,7 +204,7 @@ def calculate_performance_metrics(p_df: pd.DataFrame, risk_free_rate: float = 0.
     }
 
 
-def calculate_asset_metrics(p_df: pd.DataFrame, assets: List[str], risk_free_rate: float = 0.02) -> Dict:
+def calculate_asset_metrics(p_df: pd.DataFrame, assets: List[str], orders_df: pd.DataFrame = None, risk_free_rate: float = 0.02) -> Dict:
     """Calculate per-asset performance metrics."""
     import math
     
@@ -252,7 +252,10 @@ def calculate_asset_metrics(p_df: pd.DataFrame, assets: List[str], risk_free_rat
             alloc_series = p_df[alloc_col].fillna(0)
             allocated = int((alloc_series > 0).sum())
             
-            entries = int(((alloc_series.shift(1) == 0) & (alloc_series > 0)).sum())
+            if orders_df is not None and len(orders_df) > 0:
+                entries = int(((orders_df['etf'] == asset) & (orders_df['direction'] > 0)).sum())
+            else:
+                entries = int(((alloc_series.shift(1) == 0) & (alloc_series > 0)).sum())
             
             asset_returns = prices.pct_change()
             contribution = asset_returns * alloc_series
@@ -474,18 +477,18 @@ def generate_charts(metrics: Dict, run_id: str, assets_to_use: List[str] = None)
     return chart_files
 
 
-def compute_trades_from_orders(
+def compute_trades_and_positions(
     orders_df: pd.DataFrame,
     p_df: pd.DataFrame,
     assets: List[str]
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Compute round-trip trades from orders using FIFO matching.
+    Compute both closed trades and remaining open positions using FIFO matching.
     
-    Returns list of trades with entry/exit info, return %, max drawdown, duration.
+    Returns: (trades_list, positions_list)
     """
     if orders_df is None or len(orders_df) == 0:
-        return []
+        return [], []
     
     price_data = {}
     for asset in assets:
@@ -493,12 +496,10 @@ def compute_trades_from_orders(
         if col in p_df.columns:
             price_data[asset] = p_df[col].to_numpy()
     
-    index_to_minute = {}
-    if 'i_minute_i' in p_df.columns:
-        for idx, minute in enumerate(p_df['i_minute_i'].values):
-            index_to_minute[idx] = minute
+    minute_values = p_df['i_minute_i'].to_numpy() if 'i_minute_i' in p_df.columns else None
     
     trades = []
+    positions = []
     
     orders_sorted = orders_df.sort_values('timestamp').reset_index(drop=True)
     
@@ -508,71 +509,193 @@ def compute_trades_from_orders(
         if len(asset_orders) == 0:
             continue
         
-        open_positions = []
+        open_lots = []
         
         for _, order in asset_orders.iterrows():
             if order['direction'] > 0:
-                open_positions.append({
-                    'qty': order['size'],
-                    'entry_price': order['price'],
-                    'entry_timestamp': order['timestamp'],
-                    'entry_row': None
+                open_lots.append({
+                    'qty': float(order['size']),
+                    'entry_price': float(order['price']),
+                    'entry_row': int(order['timestamp'])
                 })
             else:
-                sell_qty = order['size']
-                sell_price = order['price']
-                sell_timestamp = order['timestamp']
-                sell_row = None
+                sell_qty = float(order['size'])
+                sell_price = float(order['price'])
+                sell_row = int(order['timestamp'])
                 
-                while sell_qty > 0 and open_positions:
-                    pos = open_positions[0]
+                while sell_qty > 1e-9 and open_lots:
+                    lot = open_lots[0]
                     
-                    matched_qty = min(pos['qty'], sell_qty)
+                    matched_qty = min(lot['qty'], sell_qty)
                     
-                    entry_ts = pos['entry_timestamp']
-                    exit_ts = sell_timestamp
+                    entry_row = lot['entry_row']
+                    exit_row = sell_row
                     
-                    entry_dt = minutes_to_datetime(entry_ts)
-                    exit_dt = minutes_to_datetime(exit_ts)
+                    if minute_values is not None:
+                        if entry_row < len(minute_values) and exit_row < len(minute_values):
+                            entry_minute = minute_values[entry_row]
+                            exit_minute = minute_values[exit_row]
+                            entry_dt = minutes_to_datetime(entry_minute)
+                            exit_dt = minutes_to_datetime(exit_minute)
+                        else:
+                            entry_dt = None
+                            exit_dt = None
+                    else:
+                        entry_dt = None
+                        exit_dt = None
                     
-                    trade_return = ((sell_price - pos['entry_price']) / pos['entry_price']) * 100
+                    trade_return = ((sell_price - lot['entry_price']) / lot['entry_price']) * 100
                     
                     max_dd = 0.0
                     duration = 0
                     if asset in price_data:
                         prices = price_data[asset]
                         
-                        entry_row = np.searchsorted(p_df['i_minute_i'].values, entry_ts)
-                        exit_row = np.searchsorted(p_df['i_minute_i'].values, exit_ts)
-                        
                         if entry_row < len(prices) and exit_row <= len(prices):
                             trade_prices = prices[entry_row:exit_row + 1]
-                            if len(trade_prices) > 0 and pos['entry_price'] > 0:
+                            if len(trade_prices) > 0 and lot['entry_price'] > 0:
                                 min_price = np.nanmin(trade_prices)
-                                max_dd = ((min_price - pos['entry_price']) / pos['entry_price']) * 100
+                                max_dd = ((min_price - lot['entry_price']) / lot['entry_price']) * 100
                             duration = exit_row - entry_row
                     
                     trades.append({
                         'asset': asset,
-                        'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M'),
-                        'entry_price': round(pos['entry_price'], 4),
-                        'entry_qty': round(matched_qty, 4),
-                        'exit_date': exit_dt.strftime('%Y-%m-%d %H:%M'),
-                        'exit_price': round(sell_price, 4),
-                        'exit_qty': round(matched_qty, 4),
-                        'return_pct': round(trade_return, 2),
-                        'max_dd_pct': round(max_dd, 2),
-                        'duration_bars': duration
+                        'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M') if entry_dt else str(entry_row),
+                        'entry_price': float(round(lot['entry_price'], 4)),
+                        'entry_qty': float(round(matched_qty, 4)),
+                        'exit_date': exit_dt.strftime('%Y-%m-%d %H:%M') if exit_dt else str(exit_row),
+                        'exit_price': float(round(sell_price, 4)),
+                        'exit_qty': float(round(matched_qty, 4)),
+                        'return_pct': float(round(trade_return, 2)),
+                        'max_dd_pct': float(round(max_dd, 2)),
+                        'duration_bars': int(duration)
                     })
                     
-                    pos['qty'] -= matched_qty
+                    lot['qty'] -= matched_qty
                     sell_qty -= matched_qty
                     
-                    if pos['qty'] <= 1e-9:
-                        open_positions.pop(0)
+                    if lot['qty'] <= 1e-9:
+                        open_lots.pop(0)
+        
+        for lot in open_lots:
+            if lot['qty'] > 1e-9:
+                col = f"{asset}_S_close_f32"
+                current_price = 0.0
+                if col in p_df.columns:
+                    current_price = float(p_df[col].iloc[-1])
+                
+                entry_dt = None
+                if minute_values is not None and lot['entry_row'] < len(minute_values):
+                    entry_minute = minute_values[lot['entry_row']]
+                    entry_dt = minutes_to_datetime(entry_minute)
+                
+                positions.append({
+                    'asset': asset,
+                    'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M') if entry_dt else str(lot['entry_row']),
+                    'entry_price': float(round(lot['entry_price'], 4)),
+                    'current_price': float(round(current_price, 4)),
+                    'quantity': float(round(lot['qty'], 4)),
+                    'market_value': float(round(lot['qty'] * current_price, 2)),
+                    'unrealized_pnl_pct': float(round(((current_price - lot['entry_price']) / lot['entry_price']) * 100, 2)) if lot['entry_price'] > 0 else 0.0
+                })
     
     trades.sort(key=lambda x: x['entry_date'], reverse=True)
     
+    return trades, positions
+
+
+def compute_current_positions(
+    orders_df: pd.DataFrame,
+    p_df: pd.DataFrame,
+    assets: List[str]
+) -> List[Dict[str, Any]]:
+    """
+    Compute current open positions at the end of the backtest.
+    
+    Only returns positions for assets that have non-zero allocation at the end.
+    Uses FIFO lot tracking for entry date/price.
+    """
+    if orders_df is None or len(orders_df) == 0 or p_df is None or len(p_df) == 0:
+        return []
+    
+    final_allocs = {}
+    for asset in assets:
+        col = f"A_{asset}_alloc"
+        if col in p_df.columns:
+            final_allocs[asset] = float(p_df[col].iloc[-1])
+    
+    active_assets = [a for a in assets if final_allocs.get(a, 0) > 0]
+    
+    if not active_assets:
+        return []
+    
+    minute_values = p_df['i_minute_i'].to_numpy() if 'i_minute_i' in p_df.columns else None
+    
+    positions = []
+    
+    orders_sorted = orders_df.sort_values('timestamp').reset_index(drop=True)
+    
+    for asset in active_assets:
+        asset_orders = orders_sorted[orders_sorted['etf'] == asset].copy()
+        
+        if len(asset_orders) == 0:
+            continue
+        
+        open_lots = []
+        
+        for _, order in asset_orders.iterrows():
+            if order['direction'] > 0:
+                open_lots.append({
+                    'qty': float(order['size']),
+                    'entry_price': float(order['price']),
+                    'entry_row': int(order['timestamp'])
+                })
+            else:
+                sell_qty = float(order['size'])
+                while sell_qty > 1e-9 and open_lots:
+                    lot = open_lots[0]
+                    matched = min(lot['qty'], sell_qty)
+                    lot['qty'] -= matched
+                    sell_qty -= matched
+                    if lot['qty'] <= 1e-9:
+                        open_lots.pop(0)
+        
+        for lot in open_lots:
+            if lot['qty'] > 1e-9:
+                col = f"{asset}_S_close_f32"
+                current_price = 0.0
+                if col in p_df.columns:
+                    current_price = float(p_df[col].iloc[-1])
+                
+                market_value = lot['qty'] * current_price
+                
+                if market_value < 1.0:
+                    continue
+                
+                entry_dt = None
+                if minute_values is not None and lot['entry_row'] < len(minute_values):
+                    entry_minute = minute_values[lot['entry_row']]
+                    entry_dt = minutes_to_datetime(entry_minute)
+                
+                positions.append({
+                    'asset': asset,
+                    'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M') if entry_dt else str(lot['entry_row']),
+                    'entry_price': float(round(lot['entry_price'], 4)),
+                    'current_price': float(round(current_price, 4)),
+                    'quantity': float(round(lot['qty'], 4)),
+                    'market_value': float(round(market_value, 2)),
+                    'unrealized_pnl_pct': float(round(((current_price - lot['entry_price']) / lot['entry_price']) * 100, 2)) if lot['entry_price'] > 0 else 0.0
+                })
+    
+    return positions
+
+
+def compute_trades_from_orders(
+    orders_df: pd.DataFrame,
+    p_df: pd.DataFrame,
+    assets: List[str]
+) -> List[Dict[str, Any]]:
+    trades, _ = compute_trades_and_positions(orders_df, p_df, assets)
     return trades
 
 
@@ -640,9 +763,21 @@ def run_backtest(
     min_idx = max(lookback, 100)
     p_df_result = p_df_result.iloc[min_idx:].copy()
     
+    orders_df = orders_df[orders_df['timestamp'] >= min_idx].copy()
+    orders_df['timestamp'] = orders_df['timestamp'] - min_idx
+    orders_df = orders_df.reset_index(drop=True)
+    
+    entries_count = int((orders_df['direction'] > 0).sum()) if len(orders_df) > 0 else 0
+    exits_count = int((orders_df['direction'] < 0).sum()) if len(orders_df) > 0 else 0
+    
+    entries_safe = int(((orders_df['direction'] > 0) & (orders_df['etf'] == default_asset)).sum()) if len(orders_df) > 0 else 0
+    entries_risky = int(((orders_df['direction'] > 0) & (orders_df['etf'] != default_asset)).sum()) if len(orders_df) > 0 else 0
+    exits_safe = int(((orders_df['direction'] < 0) & (orders_df['etf'] == default_asset)).sum()) if len(orders_df) > 0 else 0
+    exits_risky = int(((orders_df['direction'] < 0) & (orders_df['etf'] != default_asset)).sum()) if len(orders_df) > 0 else 0
+    
     metrics = calculate_performance_metrics(p_df_result)
     
-    asset_metrics = calculate_asset_metrics(p_df_result, assets_to_use)
+    asset_metrics = calculate_asset_metrics(p_df_result, assets_to_use, orders_df)
     
     chart_files = generate_charts(metrics, run_id, assets_to_use)
     
@@ -672,6 +807,12 @@ def run_backtest(
         'asset_metrics': asset_metrics,
         'charts': chart_files,
         'orders_count': len(orders_df),
+        'entries_count': entries_count,
+        'exits_count': exits_count,
+        'entries_safe': entries_safe,
+        'entries_risky': entries_risky,
+        'exits_safe': exits_safe,
+        'exits_risky': exits_risky,
         'orders_df': orders_df,
         'p_df': p_df_result,
     }
