@@ -253,8 +253,6 @@ def run_backtest_cto_line(
     if default_asset not in assets_to_use:
         raise ValueError(f"default_asset '{default_asset}' not in asset list")
     
-    default_asset_idx = assets_to_use.index(default_asset)
-    
     rsi_matrix = None
     if use_rsi_entry_filter or use_rsi_diff_filter:
         df = generate_rsi_features(df, assets_to_use, rsi_period)
@@ -282,7 +280,6 @@ def run_backtest_cto_line(
         p_min_holding_periods=min_holding_periods,
         p_switch_threshold_pct=switch_threshold_pct,
         p_default_asset=default_asset,
-        p_default_asset_idx=default_asset_idx,
         p_use_rsi_entry_filter=use_rsi_entry_filter,
         p_rsi_entry_max=rsi_entry_max,
         p_use_rsi_entry_queue=use_rsi_entry_queue,

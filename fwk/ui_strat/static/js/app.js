@@ -337,9 +337,12 @@ function displayResults(data) {
         let positionsHtml = '';
         data.current_positions.forEach(pos => {
             const pnlClass = pos.unrealized_pnl_pct >= 0 ? 'positive' : 'negative';
+            const sideClass = pos.side === 'long' ? 'positive' : (pos.side === 'short' ? 'negative' : '');
+            const sideDisplay = pos.side ? pos.side.toUpperCase() : '-';
             positionsHtml += `
                 <tr>
                     <td>${pos.asset}</td>
+                    <td class="${sideClass}" style="font-weight: 600;">${sideDisplay}</td>
                     <td style="font-size: 0.85rem;">${pos.entry_date}</td>
                     <td>${pos.entry_price.toFixed(4)}</td>
                     <td>${pos.current_price.toFixed(4)}</td>
@@ -405,9 +408,12 @@ function displayTrades(trades) {
     let tableHtml = '';
     trades.forEach((trade, idx) => {
         const returnClass = trade.return_pct >= 0 ? 'positive' : 'negative';
+        const sideClass = trade.side === 'long' ? 'positive' : (trade.side === 'short' ? 'negative' : '');
+        const sideDisplay = trade.side ? trade.side.toUpperCase() : '-';
         tableHtml += `
             <tr>
                 <td>${trade.asset}</td>
+                <td class="${sideClass}" style="font-weight: 600;">${sideDisplay}</td>
                 <td style="font-size: 0.85rem;">${trade.entry_date}</td>
                 <td>${trade.entry_price.toFixed(4)}</td>
                 <td>${trade.entry_qty.toFixed(4)}</td>

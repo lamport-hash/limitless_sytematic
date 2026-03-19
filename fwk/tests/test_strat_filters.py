@@ -33,14 +33,14 @@ def test_direction_filter_long_only():
     
     long_signals = np.array([
         [1, 0, 0, 1],
-        [0, 1, 0  1],
+        [0, 1, 0, 1],
         [1, 1, 0, 1],
     ], dtype=np.int8)
     
     short_signals = np.array([
-        [0, 0, 0  0],
-        [1, 0, 0  1],
-        [0, 1, 0  1],
+        [0, 0, 0, 0],
+        [1, 0, 0, 1],
+        [0, 1, 0, 1],
     ], dtype=np.int8)
     
     result = apply_direction_filter_numba(
@@ -48,9 +48,9 @@ def test_direction_filter_long_only():
     )
     
     expected = np.array([
-        [1.0, 0.0  0.0],
-        [1.0  1.0  0.0],
-        [1.0  1.0  0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
     ])
     
     assert np.allclose(result, expected)
@@ -60,20 +60,20 @@ def test_direction_filter_short_only():
     """Test direction filter - short only mode."""
     raw_allocs = np.array([
         [1.0, 0.0, 0.0],
-        [1.0  1.0, 0.0],
-        [1.0  1.0  0.0],
+        [1.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
     ])
     
     long_signals = np.array([
-        [0, 0  0  0],
-        [1, 0  0  1],
-        [0, 1, 0  1],
+        [0, 0, 0, 0],
+        [1, 0, 0, 1],
+        [0, 1, 0, 1],
     ], dtype=np.int8)
     
     short_signals = np.array([
-        [0, 0  0  1],
-        [1, 0, 0  1],
-        [1, 1, 0  1],
+        [0, 0, 0, 1],
+        [1, 0, 0, 1],
+        [1, 1, 0, 1],
     ], dtype=np.int8)
     
     result = apply_direction_filter_numba(
@@ -81,9 +81,9 @@ def test_direction_filter_short_only():
     )
     
     expected = np.array([
-        [0.0  0.0  1.0],
-        [0.0  0.0  1.0],
-        [0.0  0.0  1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
     ])
     
     assert np.allclose(result, expected)
@@ -98,15 +98,15 @@ def test_direction_filter_both():
     ])
     
     long_signals = np.array([
-        [1, 0  1, 0],
-        [0, 1, 0 1],
-        [1, 1, 0 1],
+        [1, 0, 1, 0],
+        [0, 1, 0, 1],
+        [1, 1, 0, 1],
     ], dtype=np.int8)
     
     short_signals = np.array([
-        [1, 0  0  1],
-        [0, 1, 0 1],
-        [1, 1, 0 1],
+        [1, 0, 0, 1],
+        [0, 1, 0, 1],
+        [1, 1, 0, 1],
     ], dtype=np.int8)
     
     result = apply_direction_filter_numba(
@@ -114,9 +114,9 @@ def test_direction_filter_both():
     )
     
     expected = np.array([
-        [1.0  1.0  0.5],
-        [1.0  0.5, 0.5],
-        [1.0  0.0, 0.0],
+        [1.0, 1.0, 0.5],
+        [1.0, 0.5, 0.5],
+        [1.0, 0.0, 0.0],
     ])
     
     assert np.allclose(result, expected)
@@ -126,14 +126,14 @@ def test_default_asset_filter():
     """Test default asset filter."""
     allocs = np.array([
         [1.0, 0.0, 0.0],
-        [1.0  1.0  0.0],
+        [1.0, 1.0, 0.0],
     ])
     
     result = apply_default_asset_filter_numba(allocs, default_asset_idx=1)
     
     expected = np.array([
-        [0.0, 0.0  1.0],
-        [1.0  0.0  0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
     ])
     
     assert np.allclose(result, expected)
@@ -141,8 +141,8 @@ def test_default_asset_filter():
     result = apply_default_asset_filter_numba(allocs, default_asset_idx=2)
     
     expected = np.array([
-        [1.0  0.0  1.0],
-        [0.0  0.0  0.0],
+        [1.0, 0.0, 1.0],
+        [0.0, 0.0, 0.0],
     ])
     
     assert np.allclose(result, expected)
@@ -163,24 +163,22 @@ def test_min_holding_filter():
     )
     
     expected = np.array([
-        [1.0  0.5, 0.5],
-        [1.0  0.5, 0.5],
-        [1.0  0.0, 0.0],
+        [1.0, 0.5, 0.5],
+        [1.0, 0.5, 0.5],
+        [1.0, 0.0, 0.0],
     ])
     
     assert np.allclose(result[0], expected)
     
     _, periods_held = apply_min_holding_filter_numba(
-        target_allocs, initial_allocs,
- min_holding_periods=0
+        target_allocs, initial_allocs, min_holding_periods=0
     )
     
     expected_periods = np.zeros(3, dtype=np.int64)
     assert np.array_equal(periods_held, np.zeros(3))
     
-    result, _ = periods_held, apply_min_holding_filter_numba(
-        target_allocs, initial_allocs,
- min_holding_periods=0
+    result, periods_held = apply_min_holding_filter_numba(
+        target_allocs, initial_allocs, min_holding_periods=0
     )
     
     assert np.allclose(result[0], expected)
@@ -244,8 +242,8 @@ def test_rsi_entry_filter():
     ])
     
     blocked_expected = np.array([
-        [False, False],
-        [True, False],
+        [False, False, False],
+        [True, True, True],
     ], dtype=bool)
     
     assert np.allclose(result, expected)
@@ -253,4 +251,4 @@ def test_rsi_entry_filter():
 
 
 if __name__ == "__main__":
-    pytest.main([test_strat_filters])
+    pytest.main([__file__, "-v"])

@@ -85,7 +85,7 @@ def apply_default_asset_filter_numba(
     for i in range(n_periods):
         row_sum = 0.0
         for j in range(n_assets):
-            row_sum += result[i, j]
+            row_sum += abs(result[i, j])
         
         if row_sum < 1e-9:
             for j in range(n_assets):
@@ -163,7 +163,7 @@ def normalize_allocations_numba(allocs: np.ndarray) -> np.ndarray:
     for i in range(n_periods):
         row_sum = 0.0
         for j in range(n_assets):
-            row_sum += allocs[i, j]
+            row_sum += abs(allocs[i, j])
         
         if row_sum > 1e-9:
             for j in range(n_assets):

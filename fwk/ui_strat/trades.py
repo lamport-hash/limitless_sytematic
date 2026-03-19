@@ -40,6 +40,8 @@ def compute_trades_and_positions(
     
     orders_sorted = orders_df.sort_values('timestamp').reset_index(drop=True)
     
+    has_signal_type = 'signal_type' in orders_sorted.columns
+    
     for asset in assets:
         asset_orders = orders_sorted[orders_sorted['etf'] == asset].copy()
         
@@ -50,10 +52,12 @@ def compute_trades_and_positions(
         
         for _, order in asset_orders.iterrows():
             if order['direction'] > 0:
+                signal_type = int(order.get('signal_type', 1)) if has_signal_type else 1
                 open_lots.append({
                     'qty': float(order['size']),
                     'entry_price': float(order['price']),
-                    'entry_row': int(order['timestamp'])
+                    'entry_row': int(order['timestamp']),
+                    'signal_type': signal_type
                 })
             else:
                 sell_qty = float(order['size'])
@@ -82,6 +86,7 @@ def compute_trades_and_positions(
                         exit_dt = None
                     
                     trade_return = ((sell_price - lot['entry_price']) / lot['entry_price']) * 100
+                    side = 'long' if lot['signal_type'] > 0 else ('short' if lot['signal_type'] < 0 else 'unknown')
                     
                     max_dd = 0.0
                     duration = 0
@@ -97,6 +102,7 @@ def compute_trades_and_positions(
                     
                     trades.append({
                         'asset': asset,
+                        'side': side,
                         'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M') if entry_dt else str(entry_row),
                         'entry_price': float(round(lot['entry_price'], 4)),
                         'entry_qty': float(round(matched_qty, 4)),
@@ -126,8 +132,11 @@ def compute_trades_and_positions(
                     entry_minute = minute_values[lot['entry_row']]
                     entry_dt = minutes_to_datetime(entry_minute)
                 
+                side = 'long' if lot['signal_type'] > 0 else ('short' if lot['signal_type'] < 0 else 'unknown')
+                
                 positions.append({
                     'asset': asset,
+                    'side': side,
                     'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M') if entry_dt else str(lot['entry_row']),
                     'entry_price': float(round(lot['entry_price'], 4)),
                     'current_price': float(round(current_price, 4)),
@@ -171,6 +180,7 @@ def compute_current_positions(
     positions = []
     
     orders_sorted = orders_df.sort_values('timestamp').reset_index(drop=True)
+    has_signal_type = 'signal_type' in orders_sorted.columns
     
     for asset in active_assets:
         asset_orders = orders_sorted[orders_sorted['etf'] == asset].copy()
@@ -182,10 +192,12 @@ def compute_current_positions(
         
         for _, order in asset_orders.iterrows():
             if order['direction'] > 0:
+                signal_type = int(order.get('signal_type', 1)) if has_signal_type else 1
                 open_lots.append({
                     'qty': float(order['size']),
                     'entry_price': float(order['price']),
-                    'entry_row': int(order['timestamp'])
+                    'entry_row': int(order['timestamp']),
+                    'signal_type': signal_type
                 })
             else:
                 sell_qty = float(order['size'])
@@ -214,8 +226,11 @@ def compute_current_positions(
                     entry_minute = minute_values[lot['entry_row']]
                     entry_dt = minutes_to_datetime(entry_minute)
                 
+                side = 'long' if lot['signal_type'] > 0 else ('short' if lot['signal_type'] < 0 else 'unknown')
+                
                 positions.append({
                     'asset': asset,
+                    'side': side,
                     'entry_date': entry_dt.strftime('%Y-%m-%d %H:%M') if entry_dt else str(lot['entry_row']),
                     'entry_price': float(round(lot['entry_price'], 4)),
                     'current_price': float(round(current_price, 4)),

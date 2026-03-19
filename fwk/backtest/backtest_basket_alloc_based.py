@@ -177,11 +177,12 @@ def _run_backtest_kernel_compounding_optimized(alloc_matrix, price_matrix, trans
             if diff < -epsilon:  # Negative diff means we are selling
                 px = price_matrix[i, j]
                 if px > 0 and shares_held[j] > epsilon:
-                    if target < epsilon:
+                    if abs(target) < epsilon:
                         sell_size = shares_held[j]
+                    elif abs(target) < shares_held[j] * 0.04:
+                        sell_size = shares_held[j]    
                     else:
                         sell_size = (abs(diff) * total_val) / px
-                        sell_size = min(sell_size, shares_held[j])
                     
                     trade_value = sell_size * px
                     cost = trade_value * (transaction_cost_pct / 100.0)
@@ -212,8 +213,19 @@ def _run_backtest_kernel_compounding_optimized(alloc_matrix, price_matrix, trans
             
             if diff > epsilon:  # Positive diff means we are buying
                 px = price_matrix[i, j]
-                if px > 0:
+                if px > 0 and shares_held[j] < -epsilon:
+                    if abs(target) < epsilon:
+                        buy_size = abs(shares_held[j])
+                    elif abs(target) < abs(shares_held[j]) * 0.04:
+                        buy_size = abs(shares_held[j])
+                    else:
+                        buy_size = (diff * total_val) / px
+                elif px > 0:
                     buy_size = (diff * total_val) / px
+                else:
+                    buy_size = 0.0
+                    
+                if buy_size > epsilon:
                     trade_value = buy_size * px
                     cost = trade_value * (transaction_cost_pct / 100.0)
                     
@@ -254,98 +266,207 @@ def _run_backtest_kernel_compounding_optimized(alloc_matrix, price_matrix, trans
     return (portfolio_values, 
             out_row_idx[:order_count], out_asset_idx[:order_count], 
             out_dir[:order_count], out_size[:order_count], out_price[:order_count])
-
 @njit
-def _run_backtest_kernel_with_delay(alloc_matrix, price_matrix, delay_n=1, epsilon=1e-9):
+def _run_backtest_kernel_compounding_optimized(
+    alloc_matrix,
+    price_matrix,
+    transaction_cost_pct=0.0,
+    epsilon=1e-9
+):
     n_rows, n_assets = alloc_matrix.shape
+
     current_allocs = np.zeros(n_assets)
     shares_held = np.zeros(n_assets)
+    prev_targets = np.zeros(n_assets)
+
     portfolio_values = np.ones(n_rows)
-    
-    immediate_cash = 1.0  # Cash available to spend right now
-    # Queue to hold cash from sales: [amount, release_index]
-    pending_cash_val = np.zeros(n_rows) 
-    pending_cash_time = np.zeros(n_rows, dtype=np.int64)
-    pending_ptr_in = 0
-    pending_ptr_out = 0
-    
+    cash = 100.0
+
     max_orders = n_rows * n_assets
     out_row_idx = np.zeros(max_orders, dtype=np.int64)
     out_asset_idx = np.zeros(max_orders, dtype=np.int64)
     out_dir = np.zeros(max_orders)
     out_size = np.zeros(max_orders)
     out_price = np.zeros(max_orders)
+
     order_count = 0
 
     for i in range(n_rows):
-        # 1. Release pending cash that has finished its 'n' candle delay
-        while pending_ptr_out < pending_ptr_in:
-            if pending_cash_time[pending_ptr_out] <= i:
-                immediate_cash += pending_cash_val[pending_ptr_out]
-                pending_ptr_out += 1
-            else:
-                break
 
-        # 2. Calculate Total Value (Immediate Cash + Pending Cash + Holdings)
-        # We use Total Value to calculate 'Target Dollar Amount' for compounding
-        sum_pending = 0.0
-        for p in range(pending_ptr_out, pending_ptr_in):
-            sum_pending += pending_cash_val[p]
-            
+        # ===== MARK-TO-MARKET =====
         mkt_val = 0.0
         for j in range(n_assets):
             mkt_val += shares_held[j] * price_matrix[i, j]
-        
-        total_val = immediate_cash + sum_pending + mkt_val
+        total_val = cash + mkt_val
 
-        # PASS 1: SELLS (Cash goes into the pending queue)
+        # ============================================================
+        # PASS 1: CLOSE / REDUCE POSITIONS
+        # ============================================================
         for j in range(n_assets):
-            target = alloc_matrix[i, j]
-            diff = target - current_allocs[j]
-            if diff < -epsilon:
-                px = price_matrix[i, j]
-                if px > 0:
-                    sell_size = min((abs(diff) * total_val) / px, shares_held[j])
-                    sale_proceeds = sell_size * px
-                    
-                    # Instead of immediate_cash, add to pending queue
-                    pending_cash_val[pending_ptr_in] = sale_proceeds
-                    pending_cash_time[pending_ptr_in] = i + delay_n
-                    pending_ptr_in += 1
-                    
-                    shares_held[j] -= sell_size
-                    current_allocs[j] = target
-                    
-                    # Record Order
-                    out_row_idx[order_count], out_asset_idx[order_count] = i, j
-                    out_dir[order_count], out_size[order_count], out_price[order_count] = -1.0, sell_size, px
-                    order_count += 1
 
-        # PASS 2: BUYS (Only uses immediate_cash)
+            # 🚫 SKIP if allocation unchanged
+            if i > 0 and abs(alloc_matrix[i, j] - prev_targets[j]) < epsilon:
+                continue
+
+            target = alloc_matrix[i, j]
+            px = price_matrix[i, j]
+
+            if px <= 0:
+                continue
+
+            current_value = shares_held[j] * px
+            target_value = target * total_val
+            diff_value = target_value - current_value
+
+            if diff_value < -epsilon:
+
+                reduce_value = -diff_value
+                reduce_size = reduce_value / px
+
+                if shares_held[j] > 0:
+                    # SELL LONG
+                    reduce_size = min(reduce_size, shares_held[j])
+                    if reduce_size <= epsilon:
+                        continue
+
+                    shares_held[j] -= reduce_size
+                    trade_value = reduce_size * px
+                    cost = trade_value * (transaction_cost_pct / 100.0)
+                    cash += (trade_value - cost)
+
+                    direction = -1.0
+
+                elif shares_held[j] < 0:
+                    # COVER SHORT
+                    reduce_size = min(reduce_size, -shares_held[j])
+                    if reduce_size <= epsilon:
+                        continue
+
+                    shares_held[j] += reduce_size
+                    trade_value = reduce_size * px
+                    cost = trade_value * (transaction_cost_pct / 100.0)
+                    cash -= (trade_value + cost)
+
+                    direction = 1.0
+                else:
+                    continue
+
+                out_row_idx[order_count] = i
+                out_asset_idx[order_count] = j
+                out_dir[order_count] = direction
+                out_size[order_count] = reduce_size
+                out_price[order_count] = px
+                order_count += 1
+
+        # ============================================================
+        # RECOMPUTE AFTER SELLS
+        # ============================================================
+        mkt_val_after = 0.0
         for j in range(n_assets):
+            mkt_val_after += shares_held[j] * price_matrix[i, j]
+        total_val_after = cash + mkt_val_after
+
+        # ============================================================
+        # PASS 2: OPEN / INCREASE POSITIONS
+        # ============================================================
+        for j in range(n_assets):
+
+            # 🚫 SKIP if allocation unchanged
+            if i > 0 and abs(alloc_matrix[i, j] - prev_targets[j]) < epsilon:
+                continue
+
             target = alloc_matrix[i, j]
-            diff = target - current_allocs[j]
-            if diff > epsilon:
+            px = price_matrix[i, j]
+
+            if px <= 0:
+                continue
+
+            current_value = shares_held[j] * px
+            target_value = target * total_val_after
+            diff_value = target_value - current_value
+
+            if diff_value > epsilon:
+
+                # =========================
+                # LONG SIDE
+                # =========================
+                if target >= 0:
+                    invest_value = min(diff_value, cash)
+                    buy_size = invest_value / px
+
+                    if buy_size <= epsilon:
+                        continue
+
+                    trade_value = buy_size * px
+                    cost = trade_value * (transaction_cost_pct / 100.0)
+
+                    cash -= (trade_value + cost)
+                    shares_held[j] += buy_size
+
+                    direction = 1.0
+
+                # =========================
+                # SHORT SIDE
+                # =========================
+                else:
+                    short_value = diff_value
+                    short_size = short_value / px
+
+                    if short_size <= epsilon:
+                        continue
+
+                    trade_value = short_size * px
+                    cost = trade_value * (transaction_cost_pct / 100.0)
+
+                    cash += (trade_value - cost)
+                    shares_held[j] -= short_size
+
+                    direction = -1.0
+
+                out_row_idx[order_count] = i
+                out_asset_idx[order_count] = j
+                out_dir[order_count] = direction
+                out_size[order_count] = abs(buy_size if target >= 0 else short_size)
+                out_price[order_count] = px
+                order_count += 1
+
+        # Prevent float drift
+        if cash < 0 and cash > -1e-6:
+            cash = 0.0
+
+        # ============================================================
+        # FINAL MARK-TO-MARKET
+        # ============================================================
+        final_mkt_val = 0.0
+        for j in range(n_assets):
+            final_mkt_val += shares_held[j] * price_matrix[i, j]
+
+        total_val_final = cash + final_mkt_val
+        portfolio_values[i] = total_val_final
+
+        if total_val_final > epsilon:
+            for j in range(n_assets):
                 px = price_matrix[i, j]
-                if px > 0:
-                    desired_buy_val = diff * total_val
-                    # Constrain by actually available cash
-                    actual_buy_val = min(desired_buy_val, immediate_cash)
-                    
-                    if actual_buy_val > 0:
-                        buy_size = actual_buy_val / px
-                        immediate_cash -= actual_buy_val
-                        shares_held[j] += buy_size
-                        current_allocs[j] = target # Note: if cash was insufficient, target isn't fully met
-                        
-                        out_row_idx[order_count], out_asset_idx[order_count] = i, j
-                        out_dir[order_count], out_size[order_count], out_price[order_count] = 1.0, buy_size, px
-                        order_count += 1
+                if px > epsilon:
+                    current_allocs[j] = (shares_held[j] * px) / total_val_final
+                else:
+                    current_allocs[j] = 0.0
+        else:
+            for j in range(n_assets):
+                current_allocs[j] = 0.0
 
-        portfolio_values[i] = immediate_cash + sum_pending + mkt_val
+        # ✅ UPDATE PREVIOUS TARGETS
+        for j in range(n_assets):
+            prev_targets[j] = alloc_matrix[i, j]
 
-    return portfolio_values, out_row_idx[:order_count], out_asset_idx[:order_count], out_dir[:order_count], out_size[:order_count], out_price[:order_count]
-    
+    return (
+        portfolio_values,
+        out_row_idx[:order_count],
+        out_asset_idx[:order_count],
+        out_dir[:order_count],
+        out_size[:order_count],
+        out_price[:order_count],
+    )
 
 def run_full_backtest(p_df: pd.DataFrame, p_asset_list: list, transaction_cost_pct: float = 0.0):
     """

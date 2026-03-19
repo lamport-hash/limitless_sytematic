@@ -178,40 +178,15 @@
                     </select>
                     <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 0">
                     
+                    <label for="cto-transaction-cost">Transaction Cost (%):</label>
+                    <input type="number" id="cto-transaction-cost" value="0.01" step="0.01" min="0" max="10">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                    
                     <label for="cto-min-holding-periods">Min Holding Periods (bars):</label>
                     <input type="number" id="cto-min-holding-periods" value="240" min="0" max="10000">
                     <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px">
                     
-                    <div id="cto-rsi-filters" style="display: none; margin-top: 20px; margin-bottom: 16px">
-                    
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" id="cto-use-rsi-entry-filter"> 
-                            Enable RSI Entry Filter
-                        </label>
-                        <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 0">
-                        
-                        <div style="display: flex; align-items: center; margin-bottom: 8px">
-                        <label for="cto-rsi-entry-max">Max RSI for entry:</label>
-                        <input type="number" id="cto-rsi-entry-max" value="30" step="1" min="0" max="100" style="width: 100px">
-                        <p style="font-size: 0.8rem; color: #888; margin-top: 4px; margin-bottom: 0">
-                    </div>
-                    
-                    <div style="background: rgba(78, 204, 163, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px">
-                    <label>
-                        <input type="checkbox" id="cto-use-rsi-entry-queue"> 
-                        Enable RSI Entry Queue
-                    </label>
-                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 0">
-                    
-                    <div style="display: flex; align-items: center; margin-bottom: 8px">
-                    
-                    <label for="cto-rsi-diff-threshold">Min RSI diff to switch:</label>
-                    <input type="number" id="cto-rsi-diff-threshold" value="10" step="1" min="0" max="100" style="width: 100px">
-                    <p style="font-size: 0.8rem; color: #888; margin-top: 4px; margin-bottom: 0">
                 </div>
-            </div>
-        </div>
                 
                 <button class="btn" id="run-btn" onclick="runBacktest()" disabled>
                     Run Backtest
@@ -231,6 +206,7 @@
                     <thead>
                         <tr>
                             <th>Asset</th>
+                            <th>Side</th>
                             <th>Entry Date</th>
                             <th>Entry Price</th>
                             <th>Current Price</th>
@@ -304,6 +280,7 @@
                             <thead>
                                 <tr>
                                     <th>Asset</th>
+                                    <th>Side</th>
                                     <th>Entry Date</th>
                                     <th>Entry Price</th>
                                     <th>Entry Qty</th>

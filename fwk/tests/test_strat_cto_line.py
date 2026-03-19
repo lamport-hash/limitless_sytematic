@@ -63,6 +63,7 @@ def test_compute_cto_line_allocations_basic():
         p_asset_list=ETF_LIST,
         p_cto_params=(15, 19, 25, 29),
         p_direction="long",
+        p_default_asset="TLT",
     )
 
     assert result is not None
@@ -97,7 +98,8 @@ def test_compute_cto_line_allocations_multi_asset():
         p_df=df,
         p_asset_list=ETF_LIST,
         p_cto_params=(15, 19, 25, 29),
-        p_direction="both"
+        p_direction="both",
+        p_default_asset="TLT",
     )
 
     assert result is not None
@@ -157,6 +159,7 @@ def test_compute_cto_line_allocations_min_holding():
         p_cto_params=(15, 19, 25, 29),
         p_direction="long",
         p_min_holding_periods=0,
+        p_default_asset="TLT",
     )
 
     result_with_constraint = compute_cto_line_allocations(
@@ -165,6 +168,7 @@ def test_compute_cto_line_allocations_min_holding():
         p_cto_params=(15, 19, 25, 29),
         p_direction="long",
         p_min_holding_periods=10,
+        p_default_asset="TLT",
     )
 
     switches_no_constraint = 0
@@ -186,7 +190,7 @@ def test_compute_cto_line_allocations_min_holding():
 
 def test_compute_cto_line_allocations_short_only():
     """
-    Test CTO Line with short direction only.
+    Test CTO Line with short direction only - short signals should produce NEGATIVE allocations.
     """
     n_rows = 100
     data = {}
@@ -204,15 +208,21 @@ def test_compute_cto_line_allocations_short_only():
         p_asset_list=ETF_LIST,
         p_cto_params=(15, 19, 25, 29),
         p_direction="short",
+        p_default_asset="TLT",
     )
 
     assert result is not None
     
+    has_negative = False
     for i in range(len(result)):
         for asset in ETF_LIST:
             alloc = result.iloc[i][f"A_{asset}_alloc"]
-            if alloc > 0:
-                assert alloc >= 0.0, "Short-only mode should not have negative allocations"
+            signal_type = result.iloc[i].get(f"A_{asset}_signal_type", 0)
+            if signal_type == -1 and abs(alloc) > 1e-9:
+                assert alloc < 0, f"When signal_type=-1 (short) and allocated, allocation should be negative, got {alloc} for {asset} at row {i}"
+                has_negative = True
+    
+    assert has_negative, "Short-only mode should have at least some short signals with negative allocations"
 
 
 if __name__ == "__main__":

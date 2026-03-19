@@ -78,7 +78,7 @@ def compute_cto_line_raw_allocations(
     p_asset_list: List[str],
     p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
     p_direction: str = "both",
-) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute RAW CTO Line allocations (no constraints applied).
     
@@ -95,10 +95,11 @@ def compute_cto_line_raw_allocations(
         p_direction: "long", "short", or "both"
         
     Returns:
-        Tuple of (df with raw allocation columns, long_signals matrix, short_signals matrix)
-        - DataFrame has A_{asset}_raw_alloc columns
+        Tuple of (df with raw allocation columns, long_signals matrix, short_signals matrix, signal_types matrix)
+        - DataFrame has A_{asset}_raw_alloc and A_{asset}_signal_type columns
         - long_signals: (n_periods, n_assets) matrix
         - short_signals: (n_periods, n_assets) matrix
+        - signal_types: (n_periods, n_assets) matrix (1=long, -1=short, 0=none)
     """
     df = p_df.copy()
     n_periods = len(df)
@@ -111,6 +112,7 @@ def compute_cto_line_raw_allocations(
     raw_allocs = np.zeros((n_periods, n_assets))
     long_signals = np.zeros((n_periods, n_assets), dtype=np.int8)
     short_signals = np.zeros((n_periods, n_assets), dtype=np.int8)
+    signal_types = np.zeros((n_periods, n_assets), dtype=np.int8)
     
     for i, asset in enumerate(p_asset_list):
         asset_high = f"{asset}_{high_col}"
@@ -132,17 +134,21 @@ def compute_cto_line_raw_allocations(
         
         if p_direction == "long":
             raw_allocs[:, i] = long_sig.astype(np.float64)
+            signal_types[:, i] = long_sig.astype(np.int8)
         elif p_direction == "short":
-            raw_allocs[:, i] = short_sig.astype(np.float64)
+            raw_allocs[:, i] = -short_sig.astype(np.float64)
+            signal_types[:, i] = -short_sig.astype(np.int8)
         else:  # both - combine long and short
             raw_allocs[:, i] = (long_sig.astype(np.float64) + short_sig.astype(np.float64))
+            signal_types[:, i] = long_sig.astype(np.int8) - short_sig.astype(np.int8)
     
     for i, asset in enumerate(p_asset_list):
         df[f"A_{asset}_raw_alloc"] = raw_allocs[:, i]
+        df[f"A_{asset}_signal_type"] = signal_types[:, i]
     
     df["A_n_assets_with_signal"] = (raw_allocs > 0).sum(axis=1)
     
-    return df, long_signals, short_signals
+    return df, long_signals, short_signals, signal_types
 
 
 def compute_cto_line_allocations(
@@ -201,7 +207,7 @@ def compute_cto_line_allocations(
     
     default_asset_idx = p_asset_list.index(p_default_asset)
     
-    df, long_signals, short_signals = compute_cto_line_raw_allocations(
+    df, long_signals, short_signals, signal_types = compute_cto_line_raw_allocations(
         p_df, p_asset_list, p_cto_params, p_direction
     )
     
@@ -229,6 +235,7 @@ def compute_cto_line_allocations(
     
     for i, asset in enumerate(p_asset_list):
         df[f"A_{asset}_alloc"] = filtered_allocs[:, i]
+        df[f"A_{asset}_signal_type"] = signal_types[:, i]
     
     df["A_n_assets_with_signal"] = (filtered_allocs > 0).sum(axis=1)
     
