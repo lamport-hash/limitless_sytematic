@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ui_strat.backtest_runner import (
     load_parquet_file,
     run_backtest,
+    run_backtest_cto_line,
     compute_trades_from_orders,
     compute_current_positions,
 )
@@ -33,10 +34,11 @@ app = FastAPI(title="Dual Momentum Strategy Backtest")
 
 BASE_DIR = Path(__file__).resolve().parent
 BUNDLE_DIR = Path(os.getenv("BUNDLE_DIR", str(BASE_DIR.parent / "data" / "bundle")))
-CHARTS_DIR = BASE_DIR / "static" / "charts"
+STATIC_DIR = BASE_DIR / "static"
+CHARTS_DIR = STATIC_DIR / "charts"
 CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 
-app.mount("/static/charts", StaticFiles(directory=str(CHARTS_DIR)), name="charts")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
@@ -45,9 +47,9 @@ class BacktestRequest(BaseModel):
     selected_assets: List[str]
     strategy_type: str = "dual_momentum"
     lookback: int = 3500
-    default_asset: str
-    top_n: int
-    abs_momentum_threshold: float
+    default_asset: Optional[str] = None
+    top_n: int = 1
+    abs_momentum_threshold: float = 0.0
     transaction_cost_pct: float = 0.01
     min_holding_periods: int = 240
     switch_threshold_pct: float = 0.0
@@ -124,24 +126,36 @@ async def api_run_backtest(request: BacktestRequest):
         
         run_id = str(uuid.uuid4())[:8]
         
-        result = run_backtest(
-            filepath=str(filepath),
-            selected_assets=request.selected_assets,
-            lookback=request.lookback,
-            default_asset=request.default_asset,
-            top_n=request.top_n,
-            abs_momentum_threshold=request.abs_momentum_threshold,
-            transaction_cost_pct=request.transaction_cost_pct,
-            min_holding_periods=request.min_holding_periods,
-            switch_threshold_pct=request.switch_threshold_pct,
-            rsi_period=request.rsi_period,
-            use_rsi_entry_filter=request.use_rsi_entry_filter,
-            rsi_entry_max=request.rsi_entry_max,
-            use_rsi_entry_queue=request.use_rsi_entry_queue,
-            use_rsi_diff_filter=request.use_rsi_diff_filter,
-            rsi_diff_threshold=request.rsi_diff_threshold,
-            run_id=run_id
-        )
+        if request.strategy_type == "cto_line":
+            result = run_backtest_cto_line(
+                filepath=str(filepath),
+                selected_assets=request.selected_assets,
+                cto_params=request.cto_params or (15, 19, 25, 29),
+                direction=request.direction,
+                default_asset=request.default_asset,
+                transaction_cost_pct=request.transaction_cost_pct,
+                min_holding_periods=request.min_holding_periods,
+                run_id=run_id
+            )
+        else:
+            result = run_backtest(
+                filepath=str(filepath),
+                selected_assets=request.selected_assets,
+                lookback=request.lookback,
+                default_asset=request.default_asset,
+                top_n=request.top_n,
+                abs_momentum_threshold=request.abs_momentum_threshold,
+                transaction_cost_pct=request.transaction_cost_pct,
+                min_holding_periods=request.min_holding_periods,
+                switch_threshold_pct=request.switch_threshold_pct,
+                rsi_period=request.rsi_period,
+                use_rsi_entry_filter=request.use_rsi_entry_filter,
+                rsi_entry_max=request.rsi_entry_max,
+                use_rsi_entry_queue=request.use_rsi_entry_queue,
+                use_rsi_diff_filter=request.use_rsi_diff_filter,
+                rsi_diff_threshold=request.rsi_diff_threshold,
+                run_id=run_id
+            )
         
         BACKTEST_CACHE[run_id] = {
             'orders_df': result.get('orders_df'),
