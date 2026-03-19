@@ -39,9 +39,9 @@ def test_compute_dual_momentum_basic():
     result = compute_dual_momentum(
         p_df=df,
         p_feature_id="F_roc_4800_F_mid_f32_f16",
-        p_default_etf_idx=2,
-        p_top_n=1,
-        p_abs_momentum_threshold=0.0,
+        p_default_asset_idx=2,
+        p_top_n=2,
+        p_abs_momentum_threshold=0.5,
     )
 
     assert result is not None
@@ -50,7 +50,7 @@ def test_compute_dual_momentum_basic():
     for etf in ETF_LIST:
         assert f"A_{etf}_alloc" in result.columns
 
-    assert "A_top_etf" in result.columns
+    assert "A_top_asset" in result.columns
     assert "A_n_positive_momentum" in result.columns
 
     for i in range(len(result)):
@@ -75,9 +75,9 @@ def test_compute_dual_momentum_with_threshold():
     result = compute_dual_momentum(
         p_df=df,
         p_feature_id="F_roc_4800_F_mid_f32_f16",
-        p_default_etf_idx=2,
+        p_default_asset_idx=2,
         p_top_n=1,
-        p_abs_momentum_threshold=0.5,
+        p_abs_momentum_threshold=0.0,
     )
 
     tlt_alloc_count = (result["A_TLT_alloc"] > 0.5).sum()
@@ -102,8 +102,24 @@ def test_compute_dual_momentum_top_n():
     result = compute_dual_momentum(
         p_df=df,
         p_feature_id="F_roc_4800_F_mid_f32_f16",
-        p_default_etf_idx=2,
-        p_top_n=2,
+        p_default_asset_idx=2,
+        p_top_n=1,
+        p_abs_momentum_threshold=0.5,
+    )
+
+    result = compute_dual_momentum(
+        p_df=df,
+        p_feature_id="F_roc_4800_F_mid_f32_f16",
+        p_default_asset_idx=2,
+        p_top_n=1,
+        p_abs_momentum_threshold=0.5,
+    )
+
+    result = compute_dual_momentum(
+        p_df=df,
+        p_feature_id="F_roc_4800_F_mid_f32_f16",
+        p_default_asset_idx=2,
+        p_top_n=1,
         p_abs_momentum_threshold=0.0,
     )
 
@@ -184,7 +200,7 @@ def test_compute_dual_momentum_with_test_bundle():
     result = compute_dual_momentum(
         p_df=df,
         p_feature_id=feature_id,
-        p_default_etf_idx=2,
+        p_default_asset_idx=2,
         p_top_n=1,
         p_abs_momentum_threshold=0.0,
     )

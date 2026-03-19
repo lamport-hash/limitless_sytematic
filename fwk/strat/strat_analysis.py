@@ -17,7 +17,7 @@ def print_allocation_summary(p_df: pd.DataFrame, p_n_last: int = 10):
     print(f"{'=' * 60}")
 
     alloc_cols = [f"A_{etf}_alloc" for etf in ETF_LIST]
-    recent = p_df[alloc_cols + ["A_top_etf", "A_n_positive_momentum"]].tail(p_n_last)
+    recent = p_df[alloc_cols + ["A_top_asset", "A_n_positive_momentum"]].tail(p_n_last)
 
     for idx, row in recent.iterrows():
         alloc_str = ", ".join(
@@ -28,7 +28,7 @@ def print_allocation_summary(p_df: pd.DataFrame, p_n_last: int = 10):
             ]
         )
         print(
-            f"  {idx}: {alloc_str} | top: {row['A_top_etf']} | +mom: {row['A_n_positive_momentum']}"
+            f"  {idx}: {alloc_str} | top: {row['A_top_asset']} | +mom: {row['A_n_positive_momentum']}"
         )
 
 

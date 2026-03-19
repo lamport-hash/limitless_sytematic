@@ -243,11 +243,43 @@
         }
         .positive { color: #4ecca3; }
         .negative { color: #e74c3c; }
+        .strategy-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #b0b0b0;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            background: rgba(78, 204, 163, 0.1);
+            border-color: #4ecca3;
+        }
+        .tab-btn.active {
+            background: rgba(78, 204, 163, 0.2);
+            border-color: #4ecca3;
+            color: #4ecca3;
+        }
+        .strategy-params {
+            display: none;
+        }
+        .strategy-params.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Dual Momentum Strategy Backtest</h1>
+        <h1>Strategy Backtest</h1>
         
         <div id="error" class="error"></div>
         
@@ -271,7 +303,15 @@
             <div class="card">
                 <h2 class="card-title">2. Strategy Configuration</h2>
                 
-                <label for="lookback">Lookback Period (bars):</label>
+                <div class="strategy-tabs">
+                    <button class="tab-btn active" data-strategy="dual_momentum" onclick="selectStrategy('dual_momentum')">Dual Momentum</button>
+                    <button class="tab-btn" data-strategy="cto_line" onclick="selectStrategy('cto_line')">CTO Line</button>
+                </div>
+                
+                <input type="hidden" id="strategy-type" value="dual_momentum">
+                
+                <div id="dual-momentum-params" class="strategy-params active">
+                    <label for="lookback">Lookback Period (bars):</label>
                 <input type="number" id="lookback" value="3500" min="100" max="10000">
                 <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
                     ROC calculation window (e.g., 1500 = ~25 hours at 1-min bars)
@@ -356,6 +396,63 @@
                     <input type="number" id="rsi-diff-threshold" value="10" step="1" min="0" max="100">
                     <p style="font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 0;">
                         Switch only when current asset RSI - target asset RSI >= threshold
+                    </p>
+                </div>
+                </div>
+                
+                <div id="cto-line-params" class="strategy-params">
+                    <label for="cto-v1">SMMA V1 Period:</label>
+                    <input type="number" id="cto-v1" value="15" min="1" max="100">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        First validation SMMA period
+                    </p>
+                    
+                    <label for="cto-m1">SMMA M1 Period:</label>
+                    <input type="number" id="cto-m1" value="19" min="1" max="100">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        First momentum SMMA period
+                    </p>
+                    
+                    <label for="cto-m2">SMMA M2 Period:</label>
+                    <input type="number" id="cto-m2" value="25" min="1" max="100">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        Second momentum SMMA period
+                    </p>
+                    
+                    <label for="cto-v2">SMMA V2 Period:</label>
+                    <input type="number" id="cto-v2" value="29" min="1" max="100">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        Second validation SMMA period
+                    </p>
+                    
+                    <label for="cto-direction">Direction:</label>
+                    <select id="cto-direction">
+                        <option value="long">Long Only</option>
+                        <option value="short">Short Only</option>
+                        <option value="both">Both (Basket Mode)</option>
+                    </select>
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        Trading direction: long, short, or both signals
+                    </p>
+                    
+                    <label for="cto-default-asset">Default Asset (when no signals):</label>
+                    <select id="cto-default-asset">
+                        <option value="">-- Select a file first --</option>
+                    </select>
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        Asset to hold when no CTO signals (optional)
+                    </p>
+                    
+                    <label for="cto-transaction-cost">Transaction Cost (%):</label>
+                    <input type="number" id="cto-transaction-cost" value="0.01" step="0.01" min="0" max="10">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        Cost applied to each trade (e.g., 0.01 = 0.01% per trade)
+                    </p>
+                    
+                    <label for="cto-min-holding-periods">Min Holding Periods (bars):</label>
+                    <input type="number" id="cto-min-holding-periods" value="0" min="0" max="10000">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        Minimum bars to hold before allowing allocation switch (0 = disabled)
                     </p>
                 </div>
                 
@@ -500,6 +597,26 @@
     <script>
         let availableAssets = [];
         let currentRunId = null;
+        let currentStrategy = 'dual_momentum';
+        
+        function selectStrategy(strategy) {
+            currentStrategy = strategy;
+            document.getElementById('strategy-type').value = strategy;
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.strategy === strategy);
+            });
+            
+            document.querySelectorAll('.strategy-params').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            if (strategy === 'dual_momentum') {
+                document.getElementById('dual-momentum-params').classList.add('active');
+            } else if (strategy === 'cto_line') {
+                document.getElementById('cto-line-params').classList.add('active');
+            }
+        }
         
         async function loadFiles() {
             try {
@@ -565,25 +682,30 @@
         }
         
         function populateDefaultAssetDropdown(assets) {
-            const select = document.getElementById('default-asset');
-            select.innerHTML = '';
+            const selects = ['default-asset', 'cto-default-asset'];
             
-            assets.forEach(asset => {
-                const option = document.createElement('option');
-                option.value = asset;
-                option.textContent = asset;
-                select.appendChild(option);
+            selects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                select.innerHTML = '';
+                
+                assets.forEach(asset => {
+                    const option = document.createElement('option');
+                    option.value = asset;
+                    option.textContent = asset;
+                    select.appendChild(option);
+                });
+                
+                if (assets.includes('SHV')) {
+                    select.value = 'SHV';
+                } else if (assets.includes('TLT')) {
+                    select.value = 'TLT';
+                } else if (assets.includes('GLD')) {
+                    select.value = 'GLD';
+                } else if (assets.length > 0) {
+                    select.value = assets[0];
+                }
             });
-            
-            if (assets.includes('SHV')) {
-                select.value = 'SHV';
-            } else if (assets.includes('TLT')) {
-                select.value = 'TLT';
-            } else if (assets.includes('GLD')) {
-                select.value = 'GLD';
-            } else if (assets.length > 0) {
-                select.value = assets[0];
-            }
         }
         
         function selectAllAssets(selected) {
@@ -608,19 +730,7 @@
             
             const filename = document.getElementById('file-select').value;
             const selectedAssets = getSelectedAssets();
-            const lookback = parseInt(document.getElementById('lookback').value);
-            const topN = parseInt(document.getElementById('top-n').value);
-            const defaultAsset = document.getElementById('default-asset').value;
-            const absMomentumThreshold = parseFloat(document.getElementById('abs-momentum-threshold').value);
-            const transactionCost = parseFloat(document.getElementById('transaction-cost').value);
-            const minHoldingPeriods = parseInt(document.getElementById('min-holding-periods').value);
-            const switchThreshold = parseFloat(document.getElementById('switch-threshold').value);
-            const rsiPeriod = parseInt(document.getElementById('rsi-period').value);
-            const useRsiEntryFilter = document.getElementById('use-rsi-entry-filter').checked;
-            const rsiEntryMax = parseFloat(document.getElementById('rsi-entry-max').value);
-            const useRsiEntryQueue = document.getElementById('use-rsi-entry-queue').checked;
-            const useRsiDiffFilter = document.getElementById('use-rsi-diff-filter').checked;
-            const rsiDiffThreshold = parseFloat(document.getElementById('rsi-diff-threshold').value);
+            const strategyType = document.getElementById('strategy-type').value;
             
             if (!filename || selectedAssets.length === 0) {
                 showError('Please select a file and at least one asset');
@@ -637,23 +747,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        filename: filename,
-                        selected_assets: selectedAssets,
-                        lookback: lookback,
-                        default_asset: defaultAsset,
-                        top_n: topN,
-                        abs_momentum_threshold: absMomentumThreshold,
-                        transaction_cost_pct: transactionCost,
-                        min_holding_periods: minHoldingPeriods,
-                        switch_threshold_pct: switchThreshold,
-                        rsi_period: rsiPeriod,
-                        use_rsi_entry_filter: useRsiEntryFilter,
-                        rsi_entry_max: rsiEntryMax,
-                        use_rsi_entry_queue: useRsiEntryQueue,
-                        use_rsi_diff_filter: useRsiDiffFilter,
-                        rsi_diff_threshold: rsiDiffThreshold
-                    })
+                    body: JSON.stringify(buildRequestBody(filename, selectedAssets, strategyType))
                 });
                 
                 const data = await response.json();
@@ -671,9 +765,50 @@
             }
         }
         
+        function buildRequestBody(filename, selectedAssets, strategyType) {
+            const base = {
+                filename: filename,
+                selected_assets: selectedAssets,
+                strategy_type: strategyType
+            };
+            
+            if (strategyType === 'dual_momentum') {
+                return {
+                    ...base,
+                    lookback: parseInt(document.getElementById('lookback').value),
+                    default_asset: document.getElementById('default-asset').value,
+                    top_n: parseInt(document.getElementById('top-n').value),
+                    abs_momentum_threshold: parseFloat(document.getElementById('abs-momentum-threshold').value),
+                    transaction_cost_pct: parseFloat(document.getElementById('transaction-cost').value),
+                    min_holding_periods: parseInt(document.getElementById('min-holding-periods').value),
+                    switch_threshold_pct: parseFloat(document.getElementById('switch-threshold').value),
+                    rsi_period: parseInt(document.getElementById('rsi-period').value),
+                    use_rsi_entry_filter: document.getElementById('use-rsi-entry-filter').checked,
+                    rsi_entry_max: parseFloat(document.getElementById('rsi-entry-max').value),
+                    use_rsi_entry_queue: document.getElementById('use-rsi-entry-queue').checked,
+                    use_rsi_diff_filter: document.getElementById('use-rsi-diff-filter').checked,
+                    rsi_diff_threshold: parseFloat(document.getElementById('rsi-diff-threshold').value)
+                };
+            } else if (strategyType === 'cto_line') {
+                return {
+                    ...base,
+                    cto_params: [
+                        parseInt(document.getElementById('cto-v1').value),
+                        parseInt(document.getElementById('cto-m1').value),
+                        parseInt(document.getElementById('cto-m2').value),
+                        parseInt(document.getElementById('cto-v2').value)
+                    ],
+                    direction: document.getElementById('cto-direction').value,
+                    default_asset: document.getElementById('cto-default-asset').value || null,
+                    transaction_cost_pct: parseFloat(document.getElementById('cto-transaction-cost').value),
+                    min_holding_periods: parseInt(document.getElementById('cto-min-holding-periods').value)
+                };
+            }
+            return base;
+        }
+        
         function displayResults(data) {
             const metrics = data.metrics;
-            
             const metricsHtml = `
                 <div class="metric-card">
                     <div class="metric-label">Period</div>

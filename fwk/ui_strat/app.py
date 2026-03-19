@@ -8,7 +8,7 @@ import uuid
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -43,6 +43,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 class BacktestRequest(BaseModel):
     filename: str
     selected_assets: List[str]
+    strategy_type: str = "dual_momentum"
     lookback: int = 3500
     default_asset: str
     top_n: int
@@ -56,6 +57,8 @@ class BacktestRequest(BaseModel):
     use_rsi_entry_queue: bool = False
     use_rsi_diff_filter: bool = False
     rsi_diff_threshold: float = 10.0
+    cto_params: Optional[Tuple[int, int, int, int]] = None
+    direction: str = "both"
 
 
 class BacktestResponse(BaseModel):

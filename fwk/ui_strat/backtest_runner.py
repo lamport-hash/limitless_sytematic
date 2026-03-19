@@ -25,6 +25,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from strat.strat_backtest import compute_dual_momentum
+from strat.strat_cto_line import compute_cto_line_allocations
 from backtest.backtest_basket_alloc_based import run_full_backtest
 from features.feature_ta_utils import numba_roc_correct_min, numba_rsi
 
@@ -779,6 +780,95 @@ def run_backtest(
     
     asset_metrics = calculate_asset_metrics(p_df_result, assets_to_use, orders_df)
     
+    chart_files = generate_charts(metrics, run_id, assets_to_use)
+    
+    monthly_returns_dict = {}
+    for year, row in metrics['monthly_returns'].iterrows():
+        monthly_returns_dict[int(year)] = {k: (v if not pd.isna(v) else None) for k, v in row.to_dict().items()}
+    
+    return {
+        'run_id': run_id,
+        'metrics': {
+            'start_date': metrics['start_date'].strftime('%Y-%m-%d %H:%M'),
+            'end_date': metrics['end_date'].strftime('%Y-%m-%d %H:%M'),
+            'years': metrics['years'],
+            'start_value': metrics['start_value'],
+            'end_value': metrics['end_value'],
+            'total_return': metrics['total_return'],
+            'cagr': metrics['cagr'],
+            'max_drawdown': metrics['max_drawdown'],
+            'max_drawdown_date': metrics['max_drawdown_date'].strftime('%Y-%m-%d'),
+            'max_drawdown_peak_date': metrics['max_drawdown_peak_date'].strftime('%Y-%m-%d'),
+            'annual_volatility': metrics['annual_volatility'],
+            'sharpe_ratio': metrics['sharpe_ratio'],
+            'calmar_ratio': metrics['calmar_ratio'],
+            'win_rate': metrics['win_rate'],
+            'monthly_returns': monthly_returns_dict,
+        },
+        'asset_metrics': asset_metrics,
+        'charts': chart_files,
+        'orders_count': len(orders_df),
+        'entries_count': entries_count,
+        'exits_count': exits_count,
+        'entries_safe': entries_safe,
+        'entries_risky': entries_risky,
+        'exits_safe': exits_safe,
+        'exits_risky': exits_risky,
+        'orders_df': orders_df,
+        'p_df': p_df_result,
+    }
+
+
+def run_backtest_cto_line(
+    filepath: str,
+    selected_assets: List[str],
+    cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
+    direction: str = "both",
+    default_asset: Optional[str] = None,
+    transaction_cost_pct: float = 0.1,
+    min_holding_periods: int = 0,
+    run_id: Optional[str] = None,
+) -> Dict:
+    """Run the CTO Line basket allocation backtest."""
+    if run_id is None:
+        run_id = str(uuid.uuid4())[:8]
+    
+    df, all_assets = load_parquet_file(filepath)
+    
+    assets_to_use = [a for a in selected_assets if a in all_assets]
+    if not assets_to_use:
+        raise ValueError("No valid assets found in the selected file")
+    
+    df_allocations = compute_cto_line_allocations(
+        p_df=df,
+        p_asset_list=assets_to_use,
+        p_cto_params=cto_params,
+        p_direction=direction,
+        p_min_holding_periods=min_holding_periods,
+        p_default_asset=default_asset,
+    )
+    
+    p_df_result, orders_df = run_full_backtest(df_allocations, assets_to_use, transaction_cost_pct)
+    
+    warmup_bars = max(cto_params)
+    min_idx = max(warmup_bars, 100)
+    p_df_result = p_df_result.iloc[min_idx:].copy()
+    
+    orders_df = orders_df[orders_df['timestamp'] >= min_idx].copy()
+    orders_df['timestamp'] = orders_df['timestamp'] - min_idx
+    orders_df = orders_df.reset_index(drop=True)
+    
+    entries_count = int((orders_df['direction'] > 0).sum()) if len(orders_df) > 0 else 0
+    exits_count = int((orders_df['direction'] < 0).sum()) if len(orders_df) > 0 else 0
+    
+    safe_asset = default_asset if default_asset else assets_to_use[0]
+    entries_safe = int(((orders_df['direction'] > 0) & (orders_df['etf'] == safe_asset)).sum()) if len(orders_df) > 0 else 0
+    entries_risky = int(((orders_df['direction'] > 0) & (orders_df['etf'] != safe_asset)).sum()) if len(orders_df) > 0 else 0
+    exits_safe = int(((orders_df['direction'] < 0) & (orders_df['etf'] == safe_asset)).sum()) if len(orders_df) > 0 else 0
+    exits_risky = int(((orders_df['direction'] < 0) & (orders_df['etf'] != safe_asset)).sum()) if len(orders_df) > 0 else 0
+    
+    metrics = calculate_performance_metrics(p_df_result)
+    asset_metrics = calculate_asset_metrics(p_df_result, assets_to_use, orders_df)
     chart_files = generate_charts(metrics, run_id, assets_to_use)
     
     monthly_returns_dict = {}

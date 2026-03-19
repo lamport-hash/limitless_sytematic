@@ -176,9 +176,12 @@ def _run_backtest_kernel_compounding_optimized(alloc_matrix, price_matrix, trans
             
             if diff < -epsilon:  # Negative diff means we are selling
                 px = price_matrix[i, j]
-                if px > 0:
-                    sell_size = (abs(diff) * total_val) / px
-                    sell_size = min(sell_size, shares_held[j])
+                if px > 0 and shares_held[j] > epsilon:
+                    if target < epsilon:
+                        sell_size = shares_held[j]
+                    else:
+                        sell_size = (abs(diff) * total_val) / px
+                        sell_size = min(sell_size, shares_held[j])
                     
                     trade_value = sell_size * px
                     cost = trade_value * (transaction_cost_pct / 100.0)
@@ -193,7 +196,14 @@ def _run_backtest_kernel_compounding_optimized(alloc_matrix, price_matrix, trans
                     out_price[order_count] = px
                     order_count += 1
                     
-                    current_allocs[j] = target
+                    final_mkt_val_after_sell = 0.0
+                    for k in range(n_assets):
+                        final_mkt_val_after_sell += shares_held[k] * price_matrix[i, k]
+                    total_val_after = cash + final_mkt_val_after_sell
+                    if total_val_after > epsilon:
+                        current_allocs[j] = (shares_held[j] * px) / total_val_after
+                    else:
+                        current_allocs[j] = 0.0
 
         # PASS 2: PROCESS BUYS SECOND (Uses refreshed Cash)
         for j in range(n_assets):
