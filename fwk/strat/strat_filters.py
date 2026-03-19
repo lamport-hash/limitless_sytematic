@@ -276,6 +276,85 @@ def apply_rsi_diff_filter_numba(
     return result, blocked
 
 
+@njit
+def apply_half_assets_cap_numba(
+    allocs: np.ndarray,
+    signal_types: np.ndarray,
+    metric_values: np.ndarray,
+) -> np.ndarray:
+    """
+    Cap allocations to at most half the assets, ranked by metric strength.
+    
+    For each period:
+    - Count assets with active signals
+    - If more than half, keep only top N=floor(n_assets/2) strongest signals
+    - Set allocation to 1/(n_assets/2) for each selected asset
+    
+    Args:
+        allocs: Allocation matrix (n_periods, n_assets)
+        signal_types: Signal type matrix (n_periods, n_assets): 1=long, -1=short, 0=none
+        metric_values: Metric for ranking (n_periods, n_assets). Higher = stronger signal.
+    
+    Returns:
+        Filtered allocation matrix with half-assets cap applied
+    """
+    n_periods, n_assets = allocs.shape
+    max_assets = n_assets // 2
+    if max_assets < 1:
+        max_assets = 1
+    
+    result = np.zeros((n_periods, n_assets))
+    
+    for i in range(n_periods):
+        signal_count = 0
+        for j in range(n_assets):
+            if allocs[i, j] > 1e-9:
+                signal_count += 1
+        
+        if signal_count == 0:
+            continue
+        
+        if signal_count <= max_assets:
+            for j in range(n_assets):
+                result[i, j] = allocs[i, j]
+        else:
+            indices = np.zeros(n_assets, dtype=np.int64)
+            metrics = np.zeros(n_assets)
+            for j in range(n_assets):
+                indices[j] = j
+                if allocs[i, j] > 1e-9 and not np.isnan(metric_values[i, j]):
+                    metrics[j] = metric_values[i, j]
+                else:
+                    metrics[j] = -1e9
+            
+            for j1 in range(n_assets):
+                for j2 in range(j1 + 1, n_assets):
+                    if metrics[j2] > metrics[j1]:
+                        tmp_m = metrics[j1]
+                        metrics[j1] = metrics[j2]
+                        metrics[j2] = tmp_m
+                        tmp_i = indices[j1]
+                        indices[j1] = indices[j2]
+                        indices[j2] = tmp_i
+            
+            for k in range(max_assets):
+                idx = indices[k]
+                result[i, idx] = allocs[i, idx]
+        
+        active_count = 0
+        for j in range(n_assets):
+            if result[i, j] > 1e-9:
+                active_count += 1
+        
+        if active_count > 0:
+            alloc_per_asset = 1.0 / float(max_assets)
+            for j in range(n_assets):
+                if result[i, j] > 1e-9:
+                    result[i, j] = alloc_per_asset
+    
+    return result
+
+
 @dataclass
 class AllocationFilterParams:
     """Parameters for allocation filter pipeline."""
@@ -292,6 +371,7 @@ class AllocationFilterParams:
     p_rsi_diff_threshold: float = 10.0
     p_top_n: int = 1
     p_use_ranking_logic: bool = False
+    p_cap_to_half_assets: bool = False
 
 
 class AllocationFilter:
@@ -318,6 +398,7 @@ class AllocationFilter:
         p_short_signals: np.ndarray,
         p_rsi_values: Optional[np.ndarray] = None,
         p_metric_values: Optional[np.ndarray] = None,
+        p_signal_types: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
         Apply all filters to raw allocations.
@@ -327,7 +408,8 @@ class AllocationFilter:
             p_long_signals: Long signal matrix (n_periods, n_assets)
             p_short_signals: Short signal matrix (n_periods, n_assets)
             p_rsi_values: Optional RSI matrix (n_periods, n_assets)
-            p_metric_values: Optional metric matrix for switch threshold (n_periods, n_assets)
+            p_metric_values: Optional metric matrix for ranking (n_periods, n_assets)
+            p_signal_types: Optional signal type matrix (n_periods, n_assets): 1=long, -1=short, 0=none
         
         Returns:
             Filtered allocation matrix
@@ -344,6 +426,9 @@ class AllocationFilter:
         allocs = apply_direction_filter_numba(
             allocs, p_long_signals, p_short_signals, direction_code
         )
+        
+        if self.params.p_cap_to_half_assets and p_metric_values is not None and p_signal_types is not None:
+            allocs = apply_half_assets_cap_numba(allocs, p_signal_types, p_metric_values)
         
         if self.params.p_use_rsi_entry_filter and p_rsi_values is not None:
             allocs, _ = apply_rsi_entry_filter_numba(
