@@ -223,9 +223,9 @@ def run_backtest(
 def run_backtest_cto_line(
     filepath: str,
     selected_assets: List[str],
+    default_asset: str,
     cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
     direction: str = "both",
-    default_asset: str,
     transaction_cost_pct: float = 0.1,
     min_holding_periods: int = 0,
     switch_threshold_pct: float = 0.0,
@@ -264,13 +264,13 @@ def run_backtest_cto_line(
             col_name = f"{asset}_{rsi_feature_id}"
             if col_name in df.columns:
                 rsi_cols[asset] = df[col_name].to_numpy()
-        else:
-            prices = df[f"{asset}_S_close_f32"].to_numpy()
-            rsi_cols[asset] = numba_rsi(prices, rsi_period)
+            else:
+                prices = df[f"{asset}_S_close_f32"].to_numpy()
+                rsi_cols[asset] = numba_rsi(prices, rsi_period)
         
         n_assets = len(assets_to_use)
         rsi_matrix = np.zeros((len(df), n_assets))
-        for j, range(n_assets):
+        for j in range(n_assets):
             asset = assets_to_use[j]
             rsi_matrix[:, j] = rsi_cols[asset]
     
