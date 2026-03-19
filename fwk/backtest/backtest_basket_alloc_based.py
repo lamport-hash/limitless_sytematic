@@ -230,11 +230,26 @@ def _run_backtest_kernel_compounding_optimized(alloc_matrix, price_matrix, trans
                     
                     current_allocs[j] = target
 
-        # Final MTM for the candle
+        # PASS 3: RECALCULATE current_allocs for ALL assets based on actual positions
+        # This fixes allocation drift bug - ensures tracked allocations match reality
         final_mkt_val = 0.0
         for j in range(n_assets):
             final_mkt_val += shares_held[j] * price_matrix[i, j]
-        portfolio_values[i] = cash + final_mkt_val
+        total_val_after_trades = cash + final_mkt_val
+        
+        if total_val_after_trades > epsilon:
+            for j in range(n_assets):
+                px = price_matrix[i, j]
+                if px > epsilon:
+                    current_allocs[j] = (shares_held[j] * px) / total_val_after_trades
+                else:
+                    current_allocs[j] = 0.0
+        else:
+            for j in range(n_assets):
+                current_allocs[j] = 0.0
+
+        # Final MTM for the candle
+        portfolio_values[i] = total_val_after_trades
 
     return (portfolio_values, 
             out_row_idx[:order_count], out_asset_idx[:order_count], 

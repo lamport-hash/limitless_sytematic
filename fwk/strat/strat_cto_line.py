@@ -6,13 +6,16 @@ for a basket of assets. Each asset gets individual long/short signals.
 
 Signal Logic:
 - Long signal (1) -> asset eligible for allocation
-- Short/neutral (0) -> no allocation
+- Short signal (1) -> asset eligible for allocation
+- Both mode: long and short baskets are separate, each gets 50% of portfolio
 - Multiple assets can have allocations simultaneously
-- Allocations normalized to sum to 1.0
 
-Hysteresis:
-- p_min_holding_periods: Min bars before switching
-- p_switch_threshold_pct: Relative % new ROC must exceed current to switch
+Filter Constraints:
+Use strat_filters.AllocationFilter to apply:
+- direction filtering (long/short/both)
+- default_asset (when no signals)
+- min_holding_periods (hysteresis)
+- RSI filters (optional)
 """
 
 from typing import List, Tuple, Optional, Dict, Any
@@ -20,11 +23,12 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-from strat.strat_base import BaseStrategy, normalize_allocations, validate_allocations
+from strat.strat_base import BaseStrategy
 
 
 @njit
 def smma_numba(p_src: np.ndarray, p_length: int) -> np.ndarray:
+    """Calculate Smoothed Moving Average."""
     smma = np.zeros(len(p_src))
     for i in range(len(p_src)):
         if i == 0:
@@ -46,11 +50,11 @@ def compute_cto_signals(
     Args:
         p_high: High prices array
         p_low: Low prices array
-        p_close: Close prices array
+        p_close: Close prices array (not used but kept for API consistency)
         p_params: SMMA periods (v1, m1, m2, v2)
         
     Returns:
-        Tuple of (long_signal, short_signal) arrays
+        Tuple of (long_signal, short_signal) arrays, values 0 or 1
     """
     hl2 = (p_high + p_low) / 2.0
     
@@ -69,36 +73,32 @@ def compute_cto_signals(
     return long_signal, short_signal
 
 
-def compute_cto_line_allocations(
+def compute_cto_line_raw_allocations(
     p_df: pd.DataFrame,
     p_asset_list: List[str],
     p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
     p_direction: str = "both",
-    p_min_holding_periods: int = 0,
-    p_switch_threshold_pct: float = 0.0,
-    p_default_asset: Optional[str] = None,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     """
-    Compute CTO Line allocations for multi-asset basket.
+    Compute RAW CTO Line allocations (no constraints applied).
     
-    Basket Mode Logic:
-    - Each asset gets individual long/short signal
-    - Long signal (1) -> asset eligible for allocation
-    - Short/neutral (0) -> no allocation
-    - Multiple assets can have allocations simultaneously
-    - Allocations normalized so they sum to 1.0 (or 0 if no signals)
+    Each asset gets raw allocation of 1.0 when signal is active, 0.0 otherwise.
+    Multiple assets can have allocations simultaneously.
+    
+    This function computes signals only - use strat_filters.AllocationFilter
+    to apply constraints like default_asset, min_holding_periods, RSI filters, etc.
     
     Args:
         p_df: DataFrame with asset data (must have OHLC columns)
         p_asset_list: List of asset symbols
         p_cto_params: SMMA periods (v1, m1, m2, v2)
         p_direction: "long", "short", or "both"
-        p_min_holding_periods: Min bars to hold before allowing switch (0 = disabled)
-        p_switch_threshold_pct: Not used in basket mode with individual signals
-        p_default_asset: Asset to use when no signals (optional)
         
     Returns:
-        DataFrame with A_{asset}_alloc columns added
+        Tuple of (df with raw allocation columns, long_signals matrix, short_signals matrix)
+        - DataFrame has A_{asset}_raw_alloc columns
+        - long_signals: (n_periods, n_assets) matrix
+        - short_signals: (n_periods, n_assets) matrix
     """
     df = p_df.copy()
     n_periods = len(df)
@@ -108,7 +108,9 @@ def compute_cto_line_allocations(
     low_col = "S_low_f32"
     close_col = "S_close_f32"
     
-    signals = np.zeros((n_periods, n_assets))
+    raw_allocs = np.zeros((n_periods, n_assets))
+    long_signals = np.zeros((n_periods, n_assets), dtype=np.int8)
+    short_signals = np.zeros((n_periods, n_assets), dtype=np.int8)
     
     for i, asset in enumerate(p_asset_list):
         asset_high = f"{asset}_{high_col}"
@@ -125,61 +127,110 @@ def compute_cto_line_allocations(
             p_cto_params
         )
         
+        long_signals[:, i] = long_sig
+        short_signals[:, i] = short_sig
+        
         if p_direction == "long":
-            signals[:, i] = long_sig
+            raw_allocs[:, i] = long_sig.astype(np.float64)
         elif p_direction == "short":
-            signals[:, i] = short_sig
-        else:
-            if p_direction == "both":
-                signals[:, i] = long_sig
-    
-    allocations = np.zeros((n_periods, n_assets))
-    current_allocs = np.zeros(n_assets)
-    periods_since_change = 0
-    
-    for t in range(n_periods):
-        current_signals = signals[t]
-        
-        valid_signal_mask = current_signals > 0
-        
-        if not valid_signal_mask.any():
-            if p_default_asset is not None:
-                default_idx = p_asset_list.index(p_default_asset) if p_default_asset in p_asset_list else None
-                if default_idx is not None:
-                    new_allocs = np.zeros(n_assets)
-                    new_allocs[default_idx] = 1.0
-                else:
-                    new_allocs = current_allocs.copy()
-            else:
-                new_allocs = np.zeros(n_assets)
-        else:
-            new_allocs = np.where(valid_signal_mask, 1.0, 0.0)
-            n_signals = valid_signal_mask.sum()
-            if n_signals > 0:
-                new_allocs = new_allocs / n_signals
-        
-        should_change = True
-        if p_min_holding_periods > 0 and periods_since_change < p_min_holding_periods:
-            if not np.array_equal(new_allocs > 0, current_allocs > 0):
-                should_change = False
-            else:
-                should_change = True
-        
-        if should_change:
-            if not np.array_equal(new_allocs, current_allocs):
-                periods_since_change = 0
-            else:
-                periods_since_change += 1
-            allocations[t] = new_allocs
-            current_allocs = new_allocs.copy()
-        else:
-            allocations[t] = current_allocs.copy()
-            periods_since_change += 1
+            raw_allocs[:, i] = short_sig.astype(np.float64)
+        else:  # both - combine long and short
+            raw_allocs[:, i] = (long_sig.astype(np.float64) + short_sig.astype(np.float64))
     
     for i, asset in enumerate(p_asset_list):
-        df[f"A_{asset}_alloc"] = allocations[:, i]
+        df[f"A_{asset}_raw_alloc"] = raw_allocs[:, i]
     
-    df["A_n_assets_with_signal"] = (allocations > 0).sum(axis=1)
+    df["A_n_assets_with_signal"] = (raw_allocs > 0).sum(axis=1)
+    
+    return df, long_signals, short_signals
+
+
+def compute_cto_line_allocations(
+    p_df: pd.DataFrame,
+    p_asset_list: List[str],
+    p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
+    p_direction: str = "both",
+    p_min_holding_periods: int = 0,
+    p_switch_threshold_pct: float = 0.0,
+    p_default_asset: Optional[str] = None,
+    p_use_rsi_entry_filter: bool = False,
+    p_rsi_entry_max: float = 30.0,
+    p_use_rsi_entry_queue: bool = False,
+    p_use_rsi_diff_filter: bool = False,
+    p_rsi_diff_threshold: float = 10.0,
+    p_rsi_values: Optional[np.ndarray] = None,
+) -> pd.DataFrame:
+    """
+    Compute CTO Line allocations with all constraints applied.
+    
+    This is a convenience function that combines raw allocation computation
+    with filter application. For more control, use compute_cto_line_raw_allocations
+    and strat_filters.AllocationFilter directly.
+    
+    Args:
+        p_df: DataFrame with asset data (must have OHLC columns)
+        p_asset_list: List of asset symbols
+        p_cto_params: SMMA periods (v1, m1, m2, v2)
+        p_direction: "long", "short", or "both"
+        p_min_holding_periods: Min bars to hold before allowing switch (0 = disabled)
+        p_switch_threshold_pct: Not used in basket mode
+        p_default_asset: Asset to use when no signals (REQUIRED - raises error if None)
+        p_use_rsi_entry_filter: Enable RSI entry filter
+        p_rsi_entry_max: Max RSI to allow entry
+        p_use_rsi_entry_queue: Enable pending queue for RSI entry
+        p_use_rsi_diff_filter: Enable RSI difference filter
+        p_rsi_diff_threshold: Min RSI diff to switch
+        p_rsi_values: Optional RSI matrix (n_periods, n_assets)
+        
+    Returns:
+        DataFrame with A_{asset}_alloc columns added (filtered and normalized)
+    """
+    from strat.strat_filters import (
+        AllocationFilter, 
+        AllocationFilterParams,
+        DIRECTION_LONG,
+        DIRECTION_SHORT,
+        DIRECTION_BOTH,
+    )
+    
+    if p_default_asset is None:
+        raise ValueError("default_asset is required for CTO Line strategy")
+    
+    if p_default_asset not in p_asset_list:
+        raise ValueError(f"default_asset '{p_default_asset}' not in asset list")
+    
+    default_asset_idx = p_asset_list.index(p_default_asset)
+    
+    df, long_signals, short_signals = compute_cto_line_raw_allocations(
+        p_df, p_asset_list, p_cto_params, p_direction
+    )
+    
+    filter_params = AllocationFilterParams(
+        p_direction=p_direction,
+        p_default_asset=p_default_asset,
+        p_default_asset_idx=default_asset_idx,
+        p_min_holding_periods=p_min_holding_periods,
+        p_switch_threshold_pct=p_switch_threshold_pct,
+        p_use_rsi_entry_filter=p_use_rsi_entry_filter,
+        p_rsi_entry_max=p_rsi_entry_max,
+        p_use_rsi_entry_queue=p_use_rsi_entry_queue,
+        p_use_rsi_diff_filter=p_use_rsi_diff_filter,
+        p_rsi_diff_threshold=p_rsi_diff_threshold,
+    )
+    
+    filter = AllocationFilter(filter_params)
+    
+    raw_alloc_cols = [f"A_{asset}_raw_alloc" for asset in p_asset_list]
+    raw_allocs = df[raw_alloc_cols].to_numpy()
+    
+    filtered_allocs = filter.apply(
+        raw_allocs, long_signals, short_signals, p_rsi_values
+    )
+    
+    for i, asset in enumerate(p_asset_list):
+        df[f"A_{asset}_alloc"] = filtered_allocs[:, i]
+    
+    df["A_n_assets_with_signal"] = (filtered_allocs > 0).sum(axis=1)
     
     return df
 
@@ -252,6 +303,6 @@ class CtoLineStrategy(BaseStrategy):
             "default_asset": {
                 "type": "str",
                 "default": None,
-                "description": "Asset to hold when no signals (optional)"
+                "description": "Asset to hold when no signals (required)"
             },
         }

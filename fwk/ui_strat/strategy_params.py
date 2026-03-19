@@ -35,7 +35,13 @@ class CtoLineParams(BaseModel):
     direction: str = Field(default="both", description="Trading direction: long, short, or both")
     min_holding_periods: int = Field(default=0, ge=0, description="Minimum bars to hold before switch (0=disabled)")
     switch_threshold_pct: float = Field(default=0.0, ge=0, description="Not used in basket mode")
-    default_asset: Optional[str] = Field(default=None, description="Asset to hold when no signals (optional)")
+    default_asset: str = Field(..., description="Asset to hold when no signals (REQUIRED)")
+    rsi_period: int = Field(default=14, ge=1, le=100, description="RSI calculation period")
+    use_rsi_entry_filter: bool = Field(default=False, description="Enable RSI entry filter")
+    rsi_entry_max: float = Field(default=30.0, ge=0, le=100, description="Max RSI to allow entry")
+    use_rsi_entry_queue: bool = Field(default=False, description="Queue blocked assets for RSI entry")
+    use_rsi_diff_filter: bool = Field(default=False, description="Enable RSI difference filter")
+    rsi_diff_threshold: float = Field(default=10.0, ge=0, le=100, description="Min RSI diff to switch")
     
     @property
     def cto_params(self) -> Tuple[int, int, int, int]:

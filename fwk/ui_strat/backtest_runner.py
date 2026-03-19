@@ -17,7 +17,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from strat.strat_backtest import compute_dual_momentum
-from strat.strat_cto_line import compute_cto_line_allocations
+from strat.strat_cto_line import compute_cto_line_allocations, compute_cto_line_raw_allocations
+from strat.strat_filters import AllocationFilter, AllocationFilterParams
 from backtest.backtest_basket_alloc_based import run_full_backtest
 from features.feature_ta_utils import numba_roc_correct_min, numba_rsi
 
@@ -224,12 +225,19 @@ def run_backtest_cto_line(
     selected_assets: List[str],
     cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
     direction: str = "both",
-    default_asset: Optional[str] = None,
+    default_asset: str,
     transaction_cost_pct: float = 0.1,
     min_holding_periods: int = 0,
+    switch_threshold_pct: float = 0.0,
+    use_rsi_entry_filter: bool = False,
+    rsi_entry_max: float = 30.0,
+    use_rsi_entry_queue: bool = False,
+    use_rsi_diff_filter: bool = False,
+    rsi_diff_threshold: float = 10.0,
+    rsi_period: int = 14,
     run_id: Optional[str] = None,
 ) -> Dict:
-    """Run the CTO Line basket allocation backtest."""
+    """Run the CTO Line basket allocation backtest with filters."""
     if run_id is None:
         run_id = str(uuid.uuid4())[:8]
     
@@ -239,13 +247,48 @@ def run_backtest_cto_line(
     if not assets_to_use:
         raise ValueError("No valid assets found in the selected file")
     
+    if default_asset is None:
+        raise ValueError("default_asset is required for CTO Line strategy")
+    
+    if default_asset not in assets_to_use:
+        raise ValueError(f"default_asset '{default_asset}' not in asset list")
+    
+    default_asset_idx = assets_to_use.index(default_asset)
+    
+    rsi_matrix = None
+    if use_rsi_entry_filter or use_rsi_diff_filter:
+        df = generate_rsi_features(df, assets_to_use, rsi_period)
+        rsi_feature_id = f"F_rsi_{rsi_period}_S_close_f32_f16"
+        rsi_cols = {}
+        for asset in assets_to_use:
+            col_name = f"{asset}_{rsi_feature_id}"
+            if col_name in df.columns:
+                rsi_cols[asset] = df[col_name].to_numpy()
+        else:
+            prices = df[f"{asset}_S_close_f32"].to_numpy()
+            rsi_cols[asset] = numba_rsi(prices, rsi_period)
+        
+        n_assets = len(assets_to_use)
+        rsi_matrix = np.zeros((len(df), n_assets))
+        for j, range(n_assets):
+            asset = assets_to_use[j]
+            rsi_matrix[:, j] = rsi_cols[asset]
+    
     df_allocations = compute_cto_line_allocations(
         p_df=df,
         p_asset_list=assets_to_use,
         p_cto_params=cto_params,
         p_direction=direction,
         p_min_holding_periods=min_holding_periods,
+        p_switch_threshold_pct=switch_threshold_pct,
         p_default_asset=default_asset,
+        p_default_asset_idx=default_asset_idx,
+        p_use_rsi_entry_filter=use_rsi_entry_filter,
+        p_rsi_entry_max=rsi_entry_max,
+        p_use_rsi_entry_queue=use_rsi_entry_queue,
+        p_use_rsi_diff_filter=use_rsi_diff_filter,
+        p_rsi_diff_threshold=rsi_diff_threshold,
+        p_rsi_values=rsi_matrix if use_rsi_entry_filter or use_rsi_diff_filter else None,
     )
     
     p_df_result, orders_df = run_full_backtest(df_allocations, assets_to_use, transaction_cost_pct)
