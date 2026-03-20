@@ -457,6 +457,7 @@ class AllocationFilter:
         p_short_signals: np.ndarray,
         p_rsi_values: Optional[np.ndarray],
         p_metric_values: Optional[np.ndarray],
+        p_signal_types: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """
         Apply filters with additional output for tracking blocked/delayed switches.
@@ -482,6 +483,9 @@ class AllocationFilter:
         allocs = apply_direction_filter_numba(
             allocs, p_long_signals, p_short_signals, direction_code
         )
+        
+        if self.params.p_cap_to_half_assets and p_metric_values is not None and p_signal_types is not None:
+            allocs = apply_half_assets_cap_numba(allocs, p_signal_types, p_metric_values)
         
         if self.params.p_use_rsi_entry_filter and p_rsi_values is not None:
             allocs, rsi_blocked = apply_rsi_entry_filter_numba(

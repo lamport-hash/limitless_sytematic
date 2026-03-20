@@ -36,6 +36,7 @@ class CtoLineParams(BaseModel):
     min_holding_periods: int = Field(default=0, ge=0, description="Minimum bars to hold before switch (0=disabled)")
     switch_threshold_pct: float = Field(default=0.0, ge=0, description="Not used in basket mode")
     default_asset: str = Field(..., description="Asset to hold when no signals (REQUIRED)")
+    cap_to_half_assets: bool = Field(default=True, description="Cap allocations to at most half the assets")
     rsi_period: int = Field(default=14, ge=1, le=100, description="RSI calculation period")
     use_rsi_entry_filter: bool = Field(default=False, description="Enable RSI entry filter")
     rsi_entry_max: float = Field(default=30.0, ge=0, le=100, description="Max RSI to allow entry")

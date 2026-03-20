@@ -165,6 +165,8 @@ def compute_cto_line_allocations(
     p_use_rsi_diff_filter: bool = False,
     p_rsi_diff_threshold: float = 10.0,
     p_rsi_values: Optional[np.ndarray] = None,
+    p_cap_to_half_assets: bool = False,
+    p_metric_values: Optional[np.ndarray] = None,
 ) -> pd.DataFrame:
     """
     Compute CTO Line allocations with all constraints applied.
@@ -187,6 +189,8 @@ def compute_cto_line_allocations(
         p_use_rsi_diff_filter: Enable RSI difference filter
         p_rsi_diff_threshold: Min RSI diff to switch
         p_rsi_values: Optional RSI matrix (n_periods, n_assets)
+        p_cap_to_half_assets: Cap allocations to at most half the assets
+        p_metric_values: Optional metric matrix for ranking (n_periods, n_assets)
         
     Returns:
         DataFrame with A_{asset}_alloc columns added (filtered and normalized)
@@ -222,6 +226,7 @@ def compute_cto_line_allocations(
         p_use_rsi_entry_queue=p_use_rsi_entry_queue,
         p_use_rsi_diff_filter=p_use_rsi_diff_filter,
         p_rsi_diff_threshold=p_rsi_diff_threshold,
+        p_cap_to_half_assets=p_cap_to_half_assets,
     )
     
     filter = AllocationFilter(filter_params)
@@ -230,7 +235,7 @@ def compute_cto_line_allocations(
     raw_allocs = df[raw_alloc_cols].to_numpy()
     
     filtered_allocs = filter.apply(
-        raw_allocs, long_signals, short_signals, p_rsi_values
+        raw_allocs, long_signals, short_signals, p_rsi_values, p_metric_values, signal_types
     )
     
     for i, asset in enumerate(p_asset_list):
@@ -262,6 +267,8 @@ class CtoLineStrategy(BaseStrategy):
         p_min_holding_periods: int = 0,
         p_switch_threshold_pct: float = 0.0,
         p_default_asset: Optional[str] = None,
+        p_cap_to_half_assets: bool = False,
+        p_metric_values: Optional[np.ndarray] = None,
         **kwargs
     ) -> pd.DataFrame:
         return compute_cto_line_allocations(
@@ -272,6 +279,8 @@ class CtoLineStrategy(BaseStrategy):
             p_min_holding_periods=p_min_holding_periods,
             p_switch_threshold_pct=p_switch_threshold_pct,
             p_default_asset=p_default_asset,
+            p_cap_to_half_assets=p_cap_to_half_assets,
+            p_metric_values=p_metric_values,
         )
     
     def get_required_features(
@@ -311,5 +320,10 @@ class CtoLineStrategy(BaseStrategy):
                 "type": "str",
                 "default": None,
                 "description": "Asset to hold when no signals (required)"
+            },
+            "cap_to_half_assets": {
+                "type": "bool",
+                "default": False,
+                "description": "Cap allocations to at most half the assets"
             },
         }

@@ -225,5 +225,55 @@ def test_compute_cto_line_allocations_short_only():
     assert has_negative, "Short-only mode should have at least some short signals with negative allocations"
 
 
+def test_compute_cto_line_allocations_half_assets_cap():
+    """
+    Test CTO Line with cap_to_half_assets - should not allocate to more than half the assets.
+    Allocation to each selected asset should be 1/(nb_assets/2).
+    """
+    n_rows = 200
+    data = {}
+
+    np.random.seed(777)
+    for asset in ETF_LIST:
+        data[f"{asset}_S_high_f32"] = 100 + np.cumsum(np.random.randn(n_rows) * 0.5)
+        data[f"{asset}_S_low_f32"] = 100 + np.cumsum(np.random.randn(n_rows) * 0.5)
+        data[f"{asset}_S_close_f32"] = 100 + np.cumsum(np.random.randn(n_rows) * 0.5)
+
+    df = pd.DataFrame(data)
+    n_assets = len(ETF_LIST)
+    max_assets = n_assets // 2
+    expected_alloc_per_asset = 1.0 / max_assets
+
+    metric_matrix = np.zeros((n_rows, n_assets))
+    for j, asset in enumerate(ETF_LIST):
+        hl2 = (df[f"{asset}_S_high_f32"].to_numpy() + df[f"{asset}_S_low_f32"].to_numpy()) / 2.0
+        from features.f_cto_line import smma_numba
+        v1 = smma_numba(hl2, 15)
+        close = df[f"{asset}_S_close_f32"].to_numpy()
+        metric_matrix[:, j] = (v1 - close) / close
+
+    result = compute_cto_line_allocations(
+        p_df=df,
+        p_asset_list=ETF_LIST,
+        p_cto_params=(15, 19, 25, 29),
+        p_direction="both",
+        p_default_asset="TLT",
+        p_cap_to_half_assets=True,
+        p_metric_values=metric_matrix,
+    )
+
+    assert result is not None
+    
+    for i in range(len(result)):
+        non_zero_allocs = [result.iloc[i][f"A_{asset}_alloc"] for asset in ETF_LIST if abs(result.iloc[i][f"A_{asset}_alloc"]) > 1e-9]
+        
+        if len(non_zero_allocs) > 0:
+            assert len(non_zero_allocs) <= max_assets, f"Row {i}: Should not allocate to more than {max_assets} assets, got {len(non_zero_allocs)}"
+            
+            for alloc in non_zero_allocs:
+                if abs(alloc - expected_alloc_per_asset) > 1e-6:
+                    assert abs(alloc - 1.0) < 1e-6, f"Row {i}: Allocation should be {expected_alloc_per_asset} or 1.0 (default), got {alloc}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

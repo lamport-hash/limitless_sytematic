@@ -61,6 +61,7 @@ class BacktestRequest(BaseModel):
     rsi_diff_threshold: float = 10.0
     cto_params: Optional[Tuple[int, int, int, int]] = None
     direction: str = "both"
+    cap_to_half_assets: bool = True
 
 
 class BacktestResponse(BaseModel):
@@ -135,6 +136,7 @@ async def api_run_backtest(request: BacktestRequest):
                 default_asset=request.default_asset,
                 transaction_cost_pct=request.transaction_cost_pct,
                 min_holding_periods=request.min_holding_periods,
+                cap_to_half_assets=request.cap_to_half_assets,
                 run_id=run_id
             )
         else:

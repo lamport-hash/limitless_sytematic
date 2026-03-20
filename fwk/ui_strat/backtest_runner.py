@@ -21,6 +21,7 @@ from strat.strat_cto_line import compute_cto_line_allocations, compute_cto_line_
 from strat.strat_filters import AllocationFilter, AllocationFilterParams
 from backtest.backtest_basket_alloc_based import run_full_backtest
 from features.feature_ta_utils import numba_roc_correct_min, numba_rsi
+from features.f_cto_line import smma_numba
 
 from ui_strat.metrics import (
     calculate_performance_metrics,
@@ -235,6 +236,7 @@ def run_backtest_cto_line(
     use_rsi_diff_filter: bool = False,
     rsi_diff_threshold: float = 10.0,
     rsi_period: int = 14,
+    cap_to_half_assets: bool = True,
     run_id: Optional[str] = None,
 ) -> Dict:
     """Run the CTO Line basket allocation backtest with filters."""
@@ -272,6 +274,22 @@ def run_backtest_cto_line(
             asset = assets_to_use[j]
             rsi_matrix[:, j] = rsi_cols[asset]
     
+    metric_matrix = None
+    if cap_to_half_assets:
+        n_assets = len(assets_to_use)
+        metric_matrix = np.zeros((len(df), n_assets))
+        for j, asset in enumerate(assets_to_use):
+            high_col = f"{asset}_S_high_f32"
+            low_col = f"{asset}_S_low_f32"
+            close_col = f"{asset}_S_close_f32"
+            
+            if high_col in df.columns and low_col in df.columns and close_col in df.columns:
+                hl2 = (df[high_col].to_numpy() + df[low_col].to_numpy()) / 2.0
+                close = df[close_col].to_numpy()
+                v1 = smma_numba(hl2, cto_params[0])
+                v1_rel_dist = (v1 - close) / close
+                metric_matrix[:, j] = v1_rel_dist
+    
     df_allocations = compute_cto_line_allocations(
         p_df=df,
         p_asset_list=assets_to_use,
@@ -286,6 +304,8 @@ def run_backtest_cto_line(
         p_use_rsi_diff_filter=use_rsi_diff_filter,
         p_rsi_diff_threshold=rsi_diff_threshold,
         p_rsi_values=rsi_matrix if use_rsi_entry_filter or use_rsi_diff_filter else None,
+        p_cap_to_half_assets=cap_to_half_assets,
+        p_metric_values=metric_matrix,
     )
     
     p_df_result, orders_df = run_full_backtest(df_allocations, assets_to_use, transaction_cost_pct)
