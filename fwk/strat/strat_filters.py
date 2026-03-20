@@ -68,6 +68,7 @@ def apply_direction_filter_numba(
 def apply_default_asset_filter_numba(
     allocs: np.ndarray,
     default_asset_idx: int,
+    default_direction: int = DIRECTION_LONG,
 ) -> np.ndarray:
     """
     Fill allocation gaps with default asset when no signals present.
@@ -75,6 +76,7 @@ def apply_default_asset_filter_numba(
     Args:
         allocs: Current allocation matrix (n_periods, n_assets), modified in-place
         default_asset_idx: Index of default asset in asset list
+        default_direction: Direction for default asset (DIRECTION_LONG=1, DIRECTION_SHORT=-1, DIRECTION_BOTH=0)
     
     Returns:
         Modified allocation matrix with default asset fills
@@ -91,7 +93,10 @@ def apply_default_asset_filter_numba(
             for j in range(n_assets):
                 result[i, j] = 0.0
             if default_asset_idx >= 0 and default_asset_idx < n_assets:
-                result[i, default_asset_idx] = 1.0
+                if default_direction == DIRECTION_SHORT:
+                    result[i, default_asset_idx] = -1.0
+                else:
+                    result[i, default_asset_idx] = 1.0
     
     return result
 
@@ -195,7 +200,7 @@ def apply_rsi_entry_filter_numba(
     
     for i in range(n_periods):
         for j in range(n_assets):
-            if allocs[i, j] > 1e-9:
+            if abs(allocs[i, j]) > 1e-9:
                 rsi = rsi_values[i, j]
                 if not np.isnan(rsi) and rsi > rsi_max:
                     filtered[i, j] = 0.0
@@ -308,7 +313,7 @@ def apply_half_assets_cap_numba(
     for i in range(n_periods):
         signal_count = 0
         for j in range(n_assets):
-            if allocs[i, j] > 1e-9:
+            if abs(allocs[i, j]) > 1e-9:
                 signal_count += 1
         
         if signal_count == 0:
@@ -322,7 +327,7 @@ def apply_half_assets_cap_numba(
             metrics = np.zeros(n_assets)
             for j in range(n_assets):
                 indices[j] = j
-                if allocs[i, j] > 1e-9 and not np.isnan(metric_values[i, j]):
+                if abs(allocs[i, j]) > 1e-9 and not np.isnan(metric_values[i, j]):
                     metrics[j] = metric_values[i, j]
                 else:
                     metrics[j] = -1e9
@@ -343,14 +348,14 @@ def apply_half_assets_cap_numba(
         
         active_count = 0
         for j in range(n_assets):
-            if result[i, j] > 1e-9:
+            if abs(result[i, j]) > 1e-9:
                 active_count += 1
         
         if active_count > 0:
             alloc_per_asset = 1.0 / float(max_assets)
             for j in range(n_assets):
-                if result[i, j] > 1e-9:
-                    result[i, j] = alloc_per_asset
+                if abs(result[i, j]) > 1e-9:
+                    result[i, j] = alloc_per_asset if result[i, j] > 0 else -alloc_per_asset
     
     return result
 
@@ -437,7 +442,7 @@ class AllocationFilter:
         
         if self.params.p_default_asset_idx is not None:
             allocs = apply_default_asset_filter_numba(
-                allocs, self.params.p_default_asset_idx
+                allocs, self.params.p_default_asset_idx, direction_code
             )
         
         allocs = normalize_allocations_numba(allocs)
@@ -495,7 +500,7 @@ class AllocationFilter:
         
         if self.params.p_default_asset_idx is not None:
             allocs = apply_default_asset_filter_numba(
-                allocs, self.params.p_default_asset_idx
+                allocs, self.params.p_default_asset_idx, direction_code
             )
         
         allocs = normalize_allocations_numba(allocs)

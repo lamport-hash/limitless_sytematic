@@ -146,7 +146,7 @@ def compute_cto_line_raw_allocations(
         df[f"A_{asset}_raw_alloc"] = raw_allocs[:, i]
         df[f"A_{asset}_signal_type"] = signal_types[:, i]
     
-    df["A_n_assets_with_signal"] = (raw_allocs > 0).sum(axis=1)
+    df["A_n_assets_with_signal"] = (np.abs(raw_allocs) > 1e-9).sum(axis=1)
     
     return df, long_signals, short_signals, signal_types
 
@@ -242,7 +242,7 @@ def compute_cto_line_allocations(
         df[f"A_{asset}_alloc"] = filtered_allocs[:, i]
         df[f"A_{asset}_signal_type"] = signal_types[:, i]
     
-    df["A_n_assets_with_signal"] = (filtered_allocs > 0).sum(axis=1)
+    df["A_n_assets_with_signal"] = (np.abs(filtered_allocs) > 1e-9).sum(axis=1)
     
     return df
 
