@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strat.strat_cto_line import compute_cto_line_allocations
+from strat.s_cto_line import compute_cto_line_allocations
 
 ETF_LIST = ["QQQ", "SPY", "TLT", "GLD", "VWO"]
 
@@ -28,12 +28,11 @@ def test_compute_cto_signals():
 
     df = pd.DataFrame(data)
 
-    from strat.strat_cto_line import compute_cto_signals
+    from features.f_cto_line import compute_cto_signals
 
-    long_sig, short_sig = compute_cto_signals(
+    long_sig, short_sig, _, _, _, _ = compute_cto_signals(
         df["QQQ_S_high_f32"].to_numpy(),
         df["QQQ_S_low_f32"].to_numpy(),
-        df["QQQ_S_close_f32"].to_numpy(),
         (15, 19, 25, 29)
     )
 

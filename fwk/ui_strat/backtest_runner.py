@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from strat.strat_backtest import compute_dual_momentum
-from strat.strat_cto_line import compute_cto_line_allocations, compute_cto_line_raw_allocations
+from strat.s_cto_line import compute_cto_line_allocations, compute_cto_line_raw_allocations
 from strat.strat_filters import AllocationFilter, AllocationFilterParams
 from backtest.backtest_basket_alloc_based import run_full_backtest
 from features.feature_ta_utils import numba_roc_correct_min, numba_rsi

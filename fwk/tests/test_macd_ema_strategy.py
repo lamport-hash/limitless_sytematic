@@ -10,7 +10,7 @@ import pytest
 from pathlib import Path
 
 from core.data_org import BUNDLE_DIR
-from strat.strat_macd_ema import (
+from strat.s_macd_ema import (
     build_features,
     ema_trend_signal,
     MACDEMA_SwingWindow,

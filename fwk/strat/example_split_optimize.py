@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.data_org import BUNDLE_DIR
-from strat.strat_macd_ema import (
+from strat.s_macd_ema import (
     build_features,
     MACDEMA_SwingOrATR,
     split_and_optimize,

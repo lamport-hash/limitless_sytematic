@@ -1,364 +1,283 @@
 """
-CTO Line Strategy.
+CTO Line Basket Allocation Strategy.
 
-Strategy based on the CTO (Colored Trend Oscillator) Line indicator
-which uses multiple SMMA crossovers to generate trading signals.
+Implements allocation strategy based on CTO (Colored Trend Oscillator) Line signals
+for a basket of assets. Each asset gets individual long/short signals.
 
 Signal Logic:
-- Long Signal: Bullish SMMA crossover conditions
-- Short Signal: Bearish SMMA crossover conditions
+- Long signal (1) -> asset eligible for allocation
+- Short signal (1) -> asset eligible for allocation
+- Both mode: long and short baskets are separate, each gets 50% of portfolio
+- Multiple assets can have allocations simultaneously
+
+Filter Constraints:
+Use strat_filters.AllocationFilter to apply:
+- direction filtering (long/short/both)
+- default_asset (when no signals)
+- min_holding_periods (hysteresis)
+- RSI filters (optional)
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
-import pandas as pd
+from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
-import pandas_ta as ta
-from backtesting import Backtest, Strategy
+import pandas as pd
+from numba import njit
 
-from features.base_dataframe import BaseDataFrame
-from features.features_utils import FeatureType
-from core.enums import (
-    g_open_col,
-    g_high_col,
-    g_low_col,
-    g_close_col,
-    g_volume_col,
-    g_index_col,
-)
-
-DATA_PATH = Path("data/bundle/test_etf_features_bundle.parquet")
-ETF_SYMBOL = "QQQ"
-DEFAULT_CTO_PARAMS = (15, 19, 25, 29)
+from strat.strat_base import BaseStrategy
+from features.f_cto_line import smma_numba, compute_cto_signals
 
 
-def load_qqq_data(p_data_path: Optional[Path] = None) -> pd.DataFrame:
-    """
-    Load QQQ ETF data from bundle file.
-    
-    Args:
-        p_data_path: Path to bundle parquet file (default: DATA_PATH)
-        
-    Returns:
-        DataFrame with framework columns (S_open_f32, S_high_f32, etc.)
-    """
-    data_path = p_data_path or DATA_PATH
-    
-    if not data_path.exists():
-        raise FileNotFoundError(
-            f"Bundle not found: {data_path}\n"
-            f"Please ensure the bundle file exists."
-        )
-    
-    df_bundle = pd.read_parquet(data_path)
-    
-    qqq_cols = [c for c in df_bundle.columns if c.startswith(f"{ETF_SYMBOL}_")]
-    if not qqq_cols:
-        raise ValueError(f"No {ETF_SYMBOL} columns found in bundle")
-    
-    col_mapping = {col: col.replace(f"{ETF_SYMBOL}_", "") for col in qqq_cols}
-    df = df_bundle[qqq_cols].rename(columns=col_mapping).copy()
-    
-    return df
 
-
-def build_features(
+def compute_cto_line_raw_allocations(
     p_df: pd.DataFrame,
+    p_asset_list: List[str],
+    p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
     p_direction: str = "both",
-    p_atr_len: int = 14,
-    p_cto_params: Tuple[int, int, int, int] = DEFAULT_CTO_PARAMS,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Build CTO Line signal features and ATR.
+    Compute RAW CTO Line allocations (no constraints applied).
+    
+    Each asset gets raw allocation of 1.0 when signal is active, 0.0 otherwise.
+    Multiple assets can have allocations simultaneously.
+    
+    This function computes signals only - use strat_filters.AllocationFilter
+    to apply constraints like default_asset, min_holding_periods, RSI filters, etc.
     
     Args:
-        p_df: DataFrame with framework OHLCV columns
-        p_direction: "long", "short", or "both" - which signals to generate
-        p_atr_len: ATR calculation period
-        p_cto_params: SMMA periods for CTO Line (v1, m1, m2, v2)
+        p_df: DataFrame with asset data (must have OHLC columns)
+        p_asset_list: List of asset symbols
+        p_cto_params: SMMA periods (v1, m1, m2, v2)
+        p_direction: "long", "short", or "both"
         
     Returns:
-        DataFrame with added signal columns and ATR
+        Tuple of (df with raw allocation columns, long_signals matrix, short_signals matrix, signal_types matrix)
+        - DataFrame has A_{asset}_raw_alloc and A_{asset}_signal_type columns
+        - long_signals: (n_periods, n_assets) matrix
+        - short_signals: (n_periods, n_assets) matrix
+        - signal_types: (n_periods, n_assets) matrix (1=long, -1=short, 0=none)
     """
     df = p_df.copy()
+    n_periods = len(df)
+    n_assets = len(p_asset_list)
     
-    bdf = BaseDataFrame(p_df=df)
-    bdf.add_feature(FeatureType.CTO_LINE, params=p_cto_params)
-    df = bdf.get_dataframe()
+    high_col = "S_high_f32"
+    low_col = "S_low_f32"
+    close_col = "S_close_f32"
     
-    df["ATR"] = ta.atr(
-        df[g_high_col],
-        df[g_low_col],
-        df[g_close_col],
-        length=p_atr_len
+    raw_allocs = np.zeros((n_periods, n_assets))
+    long_signals = np.zeros((n_periods, n_assets), dtype=np.int8)
+    short_signals = np.zeros((n_periods, n_assets), dtype=np.int8)
+    signal_types = np.zeros((n_periods, n_assets), dtype=np.int8)
+    
+    for i, asset in enumerate(p_asset_list):
+        asset_high = f"{asset}_{high_col}"
+        asset_low = f"{asset}_{low_col}"
+        asset_close = f"{asset}_{close_col}"
+        
+        if asset_high not in df.columns or asset_low not in df.columns or asset_close not in df.columns:
+            continue
+        
+        long_sig, short_sig, _, _, _, _ = compute_cto_signals(
+            df[asset_high].to_numpy(),
+            df[asset_low].to_numpy(),
+            p_cto_params
+        )
+        
+        long_signals[:, i] = long_sig
+        short_signals[:, i] = short_sig
+        
+        if p_direction == "long":
+            raw_allocs[:, i] = long_sig.astype(np.float64)
+            signal_types[:, i] = long_sig.astype(np.int8)
+        elif p_direction == "short":
+            raw_allocs[:, i] = -short_sig.astype(np.float64)
+            signal_types[:, i] = -short_sig.astype(np.int8)
+        else:  # both - combine long and short
+            raw_allocs[:, i] = (long_sig.astype(np.float64) + short_sig.astype(np.float64))
+            signal_types[:, i] = long_sig.astype(np.int8) - short_sig.astype(np.int8)
+    
+    for i, asset in enumerate(p_asset_list):
+        df[f"A_{asset}_raw_alloc"] = raw_allocs[:, i]
+        df[f"A_{asset}_signal_type"] = signal_types[:, i]
+    
+    df["A_n_assets_with_signal"] = (np.abs(raw_allocs) > 1e-9).sum(axis=1)
+    
+    return df, long_signals, short_signals, signal_types
+
+
+def compute_cto_line_allocations(
+    p_df: pd.DataFrame,
+    p_asset_list: List[str],
+    p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
+    p_direction: str = "both",
+    p_min_holding_periods: int = 0,
+    p_switch_threshold_pct: float = 0.0,
+    p_default_asset: Optional[str] = None,
+    p_use_rsi_entry_filter: bool = False,
+    p_rsi_entry_max: float = 30.0,
+    p_use_rsi_entry_queue: bool = False,
+    p_use_rsi_diff_filter: bool = False,
+    p_rsi_diff_threshold: float = 10.0,
+    p_rsi_values: Optional[np.ndarray] = None,
+    p_cap_to_half_assets: bool = False,
+    p_metric_values: Optional[np.ndarray] = None,
+) -> pd.DataFrame:
+    """
+    Compute CTO Line allocations with all constraints applied.
+    
+    This is a convenience function that combines raw allocation computation
+    with filter application. For more control, use compute_cto_line_raw_allocations
+    and strat_filters.AllocationFilter directly.
+    
+    Args:
+        p_df: DataFrame with asset data (must have OHLC columns)
+        p_asset_list: List of asset symbols
+        p_cto_params: SMMA periods (v1, m1, m2, v2)
+        p_direction: "long", "short", or "both"
+        p_min_holding_periods: Min bars to hold before allowing switch (0 = disabled)
+        p_switch_threshold_pct: Not used in basket mode
+        p_default_asset: Asset to use when no signals (REQUIRED - raises error if None)
+        p_use_rsi_entry_filter: Enable RSI entry filter
+        p_rsi_entry_max: Max RSI to allow entry
+        p_use_rsi_entry_queue: Enable pending queue for RSI entry
+        p_use_rsi_diff_filter: Enable RSI difference filter
+        p_rsi_diff_threshold: Min RSI diff to switch
+        p_rsi_values: Optional RSI matrix (n_periods, n_assets)
+        p_cap_to_half_assets: Cap allocations to at most half the assets
+        p_metric_values: Optional metric matrix for ranking (n_periods, n_assets)
+        
+    Returns:
+        DataFrame with A_{asset}_alloc columns added (filtered and normalized)
+    """
+    from strat.strat_filters import (
+        AllocationFilter, 
+        AllocationFilterParams,
+        DIRECTION_LONG,
+        DIRECTION_SHORT,
+        DIRECTION_BOTH,
     )
     
-    df["signal"] = 0
+    if p_default_asset is None:
+        raise ValueError("default_asset is required for CTO Line strategy")
     
-    if p_direction in ("long", "both"):
-        long_col = "F_cto_line_long_f16"
-        if long_col in df.columns:
-            df.loc[df[long_col] == 1, "signal"] = 1
+    if p_default_asset not in p_asset_list:
+        raise ValueError(f"default_asset '{p_default_asset}' not in asset list")
     
-    if p_direction in ("short", "both"):
-        short_col = "F_cto_line_short_f16"
-        if short_col in df.columns:
-            df.loc[df[short_col] == 1, "signal"] = -1
+    default_asset_idx = p_asset_list.index(p_default_asset)
+    
+    df, long_signals, short_signals, signal_types = compute_cto_line_raw_allocations(
+        p_df, p_asset_list, p_cto_params, p_direction
+    )
+    
+    filter_params = AllocationFilterParams(
+        p_direction=p_direction,
+        p_default_asset=p_default_asset,
+        p_default_asset_idx=default_asset_idx,
+        p_min_holding_periods=p_min_holding_periods,
+        p_switch_threshold_pct=p_switch_threshold_pct,
+        p_use_rsi_entry_filter=p_use_rsi_entry_filter,
+        p_rsi_entry_max=p_rsi_entry_max,
+        p_use_rsi_entry_queue=p_use_rsi_entry_queue,
+        p_use_rsi_diff_filter=p_use_rsi_diff_filter,
+        p_rsi_diff_threshold=p_rsi_diff_threshold,
+        p_cap_to_half_assets=p_cap_to_half_assets,
+    )
+    
+    filter = AllocationFilter(filter_params)
+    
+    raw_alloc_cols = [f"A_{asset}_raw_alloc" for asset in p_asset_list]
+    raw_allocs = df[raw_alloc_cols].to_numpy()
+    
+    filtered_allocs = filter.apply(
+        raw_allocs, long_signals, short_signals, p_rsi_values, p_metric_values, signal_types
+    )
+    
+    for i, asset in enumerate(p_asset_list):
+        df[f"A_{asset}_alloc"] = filtered_allocs[:, i]
+        df[f"A_{asset}_signal_type"] = signal_types[:, i]
+    
+    df["A_n_assets_with_signal"] = (np.abs(filtered_allocs) > 1e-9).sum(axis=1)
     
     return df
 
 
-def convert_to_ohlcv(p_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert framework columns to standard OHLCV format for backtesting.py.
+class CtoLineStrategy(BaseStrategy):
+    """CTO Line basket allocation strategy implementation."""
     
-    Args:
-        p_df: DataFrame with framework columns (S_open_f32, etc.)
-        
-    Returns:
-        DataFrame with OHLCV columns and datetime index
-    """
-    ohlcv_df = pd.DataFrame(index=p_df.index)
+    @property
+    def strategy_name(self) -> str:
+        return "cto_line"
     
-    ohlcv_df["Open"] = p_df[g_open_col]
-    ohlcv_df["High"] = p_df[g_high_col]
-    ohlcv_df["Low"] = p_df[g_low_col]
-    ohlcv_df["Close"] = p_df[g_close_col]
-    ohlcv_df["Volume"] = p_df[g_volume_col]
+    @property
+    def strategy_display_name(self) -> str:
+        return "CTO Line Strategy"
     
-    ohlcv_df["signal"] = p_df["signal"]
-    ohlcv_df["ATR"] = p_df["ATR"]
+    def compute_allocations(
+        self,
+        p_df: pd.DataFrame,
+        p_asset_list: List[str],
+        p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
+        p_direction: str = "both",
+        p_min_holding_periods: int = 0,
+        p_switch_threshold_pct: float = 0.0,
+        p_default_asset: Optional[str] = None,
+        p_cap_to_half_assets: bool = False,
+        p_metric_values: Optional[np.ndarray] = None,
+        **kwargs
+    ) -> pd.DataFrame:
+        return compute_cto_line_allocations(
+            p_df=p_df,
+            p_asset_list=p_asset_list,
+            p_cto_params=p_cto_params,
+            p_direction=p_direction,
+            p_min_holding_periods=p_min_holding_periods,
+            p_switch_threshold_pct=p_switch_threshold_pct,
+            p_default_asset=p_default_asset,
+            p_cap_to_half_assets=p_cap_to_half_assets,
+            p_metric_values=p_metric_values,
+        )
     
-    if g_index_col in p_df.columns:
-        base = pd.Timestamp("2000-01-01")
-        ohlcv_df.index = base + pd.to_timedelta(p_df[g_index_col], unit="m")
+    def get_required_features(
+        self,
+        p_cto_params: Tuple[int, int, int, int] = (15, 19, 25, 29),
+        **kwargs
+    ) -> List[str]:
+        return [
+            "S_high_f32",
+            "S_low_f32",
+            "S_close_f32",
+        ]
     
-    ohlcv_df = ohlcv_df.dropna(subset=["Open", "High", "Low", "Close", "ATR"])
-    
-    return ohlcv_df
-
-
-class CtoLineStrategy(Strategy):
-    """
-    CTO Line strategy with ATR-based stop loss and take profit.
-    
-    Parameters:
-        atr_mult: ATR multiplier for stop loss distance
-        rr: Risk-reward ratio for take profit
-        direction: "long", "short", or "both"
-        atr_len: ATR calculation period (used if ATR not pre-computed)
-    """
-    
-    atr_mult: float = 2.0
-    rr: float = 2.0
-    direction: str = "both"
-    atr_len: int = 14
-    
-    def init(self):
-        pass
-    
-    def next(self):
-        if self.position:
-            return
-        
-        close = float(self.data.Close[-1])
-        sig = int(self.data.df["signal"].iloc[-1])
-        atr = float(self.data.df["ATR"].iloc[-1])
-        
-        if not np.isfinite(atr) or atr <= 0:
-            return
-        
-        sl_dist = self.atr_mult * atr
-        
-        if sig == 1 and self.direction in ("long", "both"):
-            sl = close - sl_dist
-            tp = close + self.rr * sl_dist
-            self.buy(sl=sl, tp=tp)
-        
-        elif sig == -1 and self.direction in ("short", "both"):
-            sl = close + sl_dist
-            tp = close - self.rr * sl_dist
-            self.sell(sl=sl, tp=tp)
-
-
-def run_backtest(
-    p_df: pd.DataFrame,
-    p_cash: float = 100_000,
-    p_commission: float = 0.0002,
-    **kwargs
-) -> Tuple[dict, pd.DataFrame]:
-    """
-    Run backtest with CTO Line strategy.
-    
-    Args:
-        p_df: DataFrame with framework columns + signal + ATR
-        p_cash: Initial cash amount
-        p_commission: Commission per trade
-        **kwargs: Strategy parameters (atr_mult, rr, direction, atr_len)
-        
-    Returns:
-        Tuple of (backtest stats dict, trades DataFrame)
-    """
-    ohlcv_df = convert_to_ohlcv(p_df)
-    
-    bt = Backtest(
-        ohlcv_df,
-        CtoLineStrategy,
-        cash=p_cash,
-        commission=p_commission,
-        trade_on_close=True,
-        hedging=False,
-        exclusive_orders=False,
-    )
-    
-    stats = bt.run(**kwargs)
-    trades = stats._trades if hasattr(stats, '_trades') else pd.DataFrame()
-    
-    return stats, trades
-
-
-def main(
-    p_direction: str = "both",
-    p_atr_mult: float = 2.0,
-    p_rr: float = 2.0,
-    p_atr_len: int = 14,
-    p_cto_params: Tuple[int, int, int, int] = DEFAULT_CTO_PARAMS,
-    p_cash: float = 100_000,
-    p_commission: float = 0.0002,
-    p_verbose: bool = True,
-) -> Tuple[pd.DataFrame, dict]:
-    """
-    Main entry point: Load data, build features, run backtest.
-    
-    Args:
-        p_direction: "long", "short", or "both"
-        p_atr_mult: ATR multiplier for stop loss
-        p_rr: Risk-reward ratio
-        p_atr_len: ATR period
-        p_cto_params: SMMA periods for CTO Line (v1, m1, m2, v2)
-        p_cash: Initial cash
-        p_commission: Commission per trade
-        p_verbose: Print results to console
-        
-    Returns:
-        Tuple of (df with signals, backtest stats dict)
-    """
-    if p_verbose:
-        print("=" * 80)
-        print("CTO Line Strategy - QQQ ETF")
-        print("=" * 80)
-    
-    if p_verbose:
-        print(f"\n1. Loading QQQ data...")
-    df = load_qqq_data()
-    if p_verbose:
-        print(f"   Loaded {len(df)} bars")
-    
-    if p_verbose:
-        print(f"\n2. Building features (direction={p_direction}, params={p_cto_params})...")
-    df = build_features(df, p_direction=p_direction, p_atr_len=p_atr_len, p_cto_params=p_cto_params)
-    
-    n_long = df["F_cto_line_long_f16"].sum()
-    n_short = df["F_cto_line_short_f16"].sum()
-    n_signals = (df["signal"] != 0).sum()
-    if p_verbose:
-        print(f"   Long signals: {n_long}")
-        print(f"   Short signals: {n_short}")
-        print(f"   Active signals: {n_signals}")
-    
-    if p_verbose:
-        print(f"\n3. Running backtest...")
-        print(f"   ATR mult: {p_atr_mult}")
-        print(f"   Risk-reward: {p_rr}")
-        print(f"   Direction: {p_direction}")
-    
-    stats, trades = run_backtest(
-        df,
-        p_cash=p_cash,
-        p_commission=p_commission,
-        atr_mult=p_atr_mult,
-        rr=p_rr,
-        direction=p_direction,
-        atr_len=p_atr_len,
-    )
-    
-    if p_verbose:
-        strategy_return = stats['Return [%]']
-        buy_hold_return = stats['Buy & Hold Return [%]']
-        outperformance = strategy_return - buy_hold_return
-        
-        print("\n" + "=" * 80)
-        print("BACKTEST RESULTS")
-        print("=" * 80)
-        
-        print("\n--- PERFORMANCE SUMMARY ---")
-        print(f"Start Date:            {stats['Start']}")
-        print(f"End Date:              {stats['End']}")
-        print(f"Duration:              {stats['Duration']}")
-        
-        print("\n--- RETURNS ---")
-        print(f"Strategy Return [%]:       {strategy_return:.2f}")
-        print(f"Buy & Hold Return [%]:     {buy_hold_return:.2f}")
-        print(f"Outperformance [%]:        {outperformance:+.2f}")
-        print(f"Max. Drawdown [%]:         {stats['Max. Drawdown [%]']:.2f}")
-        print(f"Exposure Time [%]:         {stats['Exposure Time [%]']:.2f}")
-        
-        print("\n--- RISK METRICS ---")
-        print(f"Sharpe Ratio:              {stats['Sharpe Ratio']:.2f}")
-        print(f"Sortino Ratio:             {stats['Sortino Ratio']:.2f}")
-        print(f"Calmar Ratio:              {stats['Calmar Ratio']:.2f}")
-        
-        print("\n--- TRADE STATISTICS ---")
-        print(f"# Trades:                  {stats['# Trades']}")
-        win_rate = stats['Win Rate [%]']
-        print(f"Win Rate [%]:              {win_rate:.2f}")
-        
-        n_trades = stats['# Trades']
-        n_wins = int(n_trades * win_rate / 100)
-        n_losses = n_trades - n_wins
-        print(f"# Winning Trades:          {n_wins}")
-        print(f"# Losing Trades:           {n_losses}")
-        
-        if len(trades) > 0 and 'ReturnPct' in trades.columns:
-            winning_trades = trades[trades['ReturnPct'] > 0]['ReturnPct']
-            losing_trades = trades[trades['ReturnPct'] <= 0]['ReturnPct']
-            
-            avg_win = winning_trades.mean() * 100 if len(winning_trades) > 0 else 0
-            avg_loss = losing_trades.mean() * 100 if len(losing_trades) > 0 else 0
-            avg_win_loss_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else float('inf')
-            
-            print(f"Avg. Winning Trade [%]:    {avg_win:.2f}")
-            print(f"Avg. Losing Trade [%]:     {avg_loss:.2f}")
-            print(f"Avg Win / Avg Loss Ratio:  {avg_win_loss_ratio:.2f}")
-        
-        print(f"Best Trade [%]:            {stats['Best Trade [%]']:.2f}")
-        print(f"Worst Trade [%]:           {stats['Worst Trade [%]']:.2f}")
-        print(f"Avg. Trade [%]:            {stats['Avg. Trade [%]']:.2f}")
-        print(f"Max. Trade Duration:       {stats['Max. Trade Duration']}")
-        print(f"Avg. Trade Duration:       {stats['Avg. Trade Duration']}")
-        
-        print("\n--- PROFIT ANALYSIS ---")
-        print(f"Profit Factor:             {stats['Profit Factor']:.2f}")
-        print(f"Expectancy [%]:            {stats['Expectancy [%]']:.2f}")
-        print(f"SQN (System Quality):      {stats['SQN']:.2f}")
-        
-        print("\n--- STRATEGY PARAMETERS ---")
-        print(f"Direction:                 {p_direction}")
-        print(f"ATR Multiplier:            {p_atr_mult}")
-        print(f"Risk-Reward Ratio:         {p_rr}")
-        print(f"ATR Period:                {p_atr_len}")
-        print(f"CTO Params (v1,m1,m2,v2):  {p_cto_params}")
-        
-        print("\n" + "=" * 80)
-        
-        if outperformance > 0:
-            print(f">>> Strategy OUTPERFORMED Buy & Hold by {outperformance:.2f}%")
-        else:
-            print(f">>> Strategy UNDERPERFORMED Buy & Hold by {abs(outperformance):.2f}%")
-        print("=" * 80)
-    
-    return df, stats
-
-
-if __name__ == "__main__":
-    main()
+    def get_param_schema(self) -> Dict[str, Any]:
+        return {
+            "cto_params": {
+                "type": "tuple",
+                "default": "(15, 19, 25, 29)",
+                "description": "SMMA periods (v1, m1, m2, v2)"
+            },
+            "direction": {
+                "type": "str",
+                "default": "both",
+                "description": "Trading direction: 'long', 'short', or 'both'"
+            },
+            "min_holding_periods": {
+                "type": "int",
+                "default": 0,
+                "description": "Minimum bars to hold before allowing switch (0 = disabled)"
+            },
+            "switch_threshold_pct": {
+                "type": "float",
+                "default": 0.0,
+                "description": "Not used in basket mode"
+            },
+            "default_asset": {
+                "type": "str",
+                "default": None,
+                "description": "Asset to hold when no signals (required)"
+            },
+            "cap_to_half_assets": {
+                "type": "bool",
+                "default": False,
+                "description": "Cap allocations to at most half the assets"
+            },
+        }

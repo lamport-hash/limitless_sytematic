@@ -21,7 +21,7 @@ from strat.strat_visualise import (
     plot_monthly_returns_chart,
     plot_performance_ranking_timeline,
 )
-from strat.strat_macd_ema import (
+from strat.s_macd_ema import (
     build_features,
     ema_trend_signal,
     MACDEMA_SwingWindow_BE,

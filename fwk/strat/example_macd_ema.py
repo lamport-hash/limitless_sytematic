@@ -13,7 +13,7 @@ import numpy as np
 from core.data_org import BUNDLE_DIR
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
-from strat.strat_macd_ema import (
+from strat.s_macd_ema import (
     build_features,
     MACDEMA_SwingOrATR,
     MACDEMA_ATRTrail,
