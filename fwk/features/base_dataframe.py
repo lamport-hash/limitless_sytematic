@@ -37,6 +37,13 @@ from features.f_daily_signal import (
 )
 from features.f_total_signal import feature_total_signal
 from features.f_cto_line import feature_cto_line_signal
+from features.f_opening_range import feature_opening_range
+from features.f_gap_pct import feature_gap_pct
+from features.f_vwap import feature_vwap
+from features.f_premarket import feature_premarket_high_low
+from features.f_volume_ratio import feature_volume_ratio
+from features.f_bollinger_bands import feature_bollinger_bands
+from features.f_donchian import feature_donchian_channel
 from merger.merger_utils import (
     convert_df_cols_float_to_float,
     scale_dataframe_columns,
@@ -260,6 +267,13 @@ class BaseDataFrame:
             FeatureType.DAILY_SIGNAL: self._add_daily_signal,
             FeatureType.TOTAL_SIGNAL: self._add_total_signal,
             FeatureType.CTO_LINE: self._add_cto_line,
+            FeatureType.OPENING_RANGE: self._add_opening_range,
+            FeatureType.GAP_PCT: self._add_gap_pct,
+            FeatureType.VWAP: self._add_vwap,
+            FeatureType.PREMARKET_HIGH_LOW: self._add_premarket_high_low,
+            FeatureType.VOLUME_RATIO: self._add_volume_ratio,
+            FeatureType.BOLLINGER_BANDS: self._add_bollinger_bands,
+            FeatureType.DONCHIAN_CHANNEL: self._add_donchian_channel,
         }
 
         method = feature_methods.get(feature_type)
@@ -661,6 +675,80 @@ class BaseDataFrame:
         self._register_feature(short_col, FeatureType.CTO_LINE)
         self._register_feature(v1_rel_dist_col, FeatureType.CTO_LINE)
         self._register_feature(v2_rel_dist_col, FeatureType.CTO_LINE)
+
+    def _add_opening_range(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        if periods is None:
+            periods = [5, 15, 30]
+        self.df = feature_opening_range(self.df, p_periods=periods)
+        for period in periods:
+            self._register_feature(f"or{period}_open", FeatureType.OPENING_RANGE)
+            self._register_feature(f"or{period}_high", FeatureType.OPENING_RANGE)
+            self._register_feature(f"or{period}_low", FeatureType.OPENING_RANGE)
+            self._register_feature(f"or{period}_close", FeatureType.OPENING_RANGE)
+
+    def _add_gap_pct(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.df = feature_gap_pct(self.df)
+        self._register_feature("prev_close", FeatureType.GAP_PCT)
+        self._register_feature("gap_pct", FeatureType.GAP_PCT)
+
+    def _add_vwap(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.df = feature_vwap(self.df)
+        self._register_feature("vwap", FeatureType.VWAP)
+
+    def _add_premarket_high_low(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.df = feature_premarket_high_low(self.df)
+        self._register_feature("pm_high", FeatureType.PREMARKET_HIGH_LOW)
+        self._register_feature("pm_low", FeatureType.PREMARKET_HIGH_LOW)
+
+    def _add_volume_ratio(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        sma_period = 20 if periods is None else periods[0] if periods else 20
+        self.df = feature_volume_ratio(self.df, p_sma_period=sma_period)
+        self._register_feature(f"vol_sma{sma_period}", FeatureType.VOLUME_RATIO)
+        self._register_feature("vol_ratio", FeatureType.VOLUME_RATIO)
+
+    def _add_bollinger_bands(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        period = 20 if periods is None else periods[0] if periods else 20
+        std_mult = kwargs.get("std_multiplier", 2.0)
+        self.df = feature_bollinger_bands(self.df, p_period=period, p_std_multiplier=std_mult)
+        self._register_feature("bb_mid", FeatureType.BOLLINGER_BANDS)
+        self._register_feature("bb_std", FeatureType.BOLLINGER_BANDS)
+        self._register_feature("bb_upper", FeatureType.BOLLINGER_BANDS)
+        self._register_feature("bb_lower", FeatureType.BOLLINGER_BANDS)
+
+    def _add_donchian_channel(
+        self,
+        periods: Optional[List[int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        period = 20 if periods is None else periods[0] if periods else 20
+        self.df = feature_donchian_channel(self.df, p_period=period)
+        self._register_feature("dc_upper", FeatureType.DONCHIAN_CHANNEL)
+        self._register_feature("dc_lower", FeatureType.DONCHIAN_CHANNEL)
+        self._register_feature("dc_mid", FeatureType.DONCHIAN_CHANNEL)
 
     def convert_f16_columns(self) -> "BaseDataFrame":
         """Convert all _f16 columns to the target precision."""

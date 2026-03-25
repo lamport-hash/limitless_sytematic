@@ -30,7 +30,7 @@ from ui_strat.backtest_runner import (
 )
 from ui_strat.optimizer import run_optimization
 from ui_strat.optim_charts import generate_optim_charts
-from ui_strat.experiments_db import save_experiment, list_experiments, delete_experiment
+from ui_strat.experiments_db import save_experiment, list_experiments, delete_experiment, get_experiment
 
 warnings.filterwarnings('ignore')
 
@@ -472,6 +472,21 @@ async def api_list_experiments(limit: int = 100):
     try:
         experiments = list_experiments(limit=limit)
         return {"experiments": experiments, "count": len(experiments)}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/experiments/{exp_id}")
+async def api_get_experiment(exp_id: int):
+    try:
+        exp = get_experiment(exp_id)
+        if not exp:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+        return {"experiment": exp}
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

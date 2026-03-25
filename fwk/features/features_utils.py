@@ -37,6 +37,13 @@ class FeatureType(StrEnum):
     DAILY_SIGNAL = "daily_signal"
     TOTAL_SIGNAL = "total_signal"
     CTO_LINE = "cto_line"
+    OPENING_RANGE = "opening_range"
+    GAP_PCT = "gap_pct"
+    VWAP = "vwap"
+    PREMARKET_HIGH_LOW = "premarket_high_low"
+    VOLUME_RATIO = "volume_ratio"
+    BOLLINGER_BANDS = "bollinger_bands"
+    DONCHIAN_CHANNEL = "donchian_channel"
 
 
 class NormalisationType(StrEnum):
@@ -201,6 +208,41 @@ FEATURE_TYPE_TO_NORMALISATION: Dict[
         NormalisationPeriodType.W1,
     ),
     FeatureType.CTO_LINE: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.OPENING_RANGE: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.GAP_PCT: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.VWAP: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.D1,
+    ),
+    FeatureType.PREMARKET_HIGH_LOW: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.VOLUME_RATIO: (
+        NormalisationType.ZSCORE,
+        NormalisationPeriodType.M6,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.BOLLINGER_BANDS: (
+        NormalisationType.NONE,
+        NormalisationPeriodType.Y1,
+        NormalisationPeriodType.W1,
+    ),
+    FeatureType.DONCHIAN_CHANNEL: (
         NormalisationType.NONE,
         NormalisationPeriodType.Y1,
         NormalisationPeriodType.W1,

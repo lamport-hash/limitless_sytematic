@@ -109,7 +109,7 @@ def _run_single_optim_step(
     """Run a single optimization step for one lookback value."""
     from strat.strat_backtest import compute_dual_momentum
     from backtest.backtest_basket_alloc_based import run_full_backtest
-    from backtest import calculate_performance_metrics
+    from backtest.backtest_alloc_based import calculate_performance_metrics
     from features.feature_ta_utils import numba_roc_correct_min
     
     df_copy = df.copy()

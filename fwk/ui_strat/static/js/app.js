@@ -297,7 +297,8 @@ function validateBlendWeights() {
         const typeSelect = row.querySelector('.blend-strategy-type');
         const type = typeSelect ? typeSelect.value : 'unknown';
         if (checkboxes.length === 0) {
-            issues.push(`"${type === 'dual_momentum' ? 'Dual Momentum' : 'CTO Line'}" has no assets selected`);
+            let typeLabel = type === 'dual_momentum' ? 'Dual Momentum' : type === 'cto_line' ? 'CTO Line' : 'Static Alloc';
+            issues.push(`"${typeLabel}" has no assets selected`);
         }
     });
     
@@ -357,7 +358,8 @@ function renderBlendAssetMatrix() {
     
     let html = '<table class="blend-asset-matrix-table"><thead><tr><th>Asset</th>';
     strategyLabels.forEach((s, i) => {
-        html += `<th>${s.type === 'dual_momentum' ? 'Dual Mom' : 'CTO Line'}<br>(${s.weight}%)</th>`;
+        let typeLabel = s.type === 'dual_momentum' ? 'Dual Mom' : s.type === 'cto_line' ? 'CTO Line' : 'Static Alloc';
+        html += `<th>${typeLabel}<br>(${s.weight}%)</th>`;
     });
     html += '</tr></thead><tbody>';
     
@@ -1280,6 +1282,7 @@ function displayExperiments(experiments) {
                 <td>${exp.top_n || '-'}</td>
                 <td style="font-size: 0.75rem;">${exp.created_at ? exp.created_at.substring(0, 10) : '-'}</td>
                 <td>
+                    <button class="btn-small" onclick="loadExperiment(${exp.id})" style="padding: 4px 8px; font-size: 0.75rem; margin-right: 4px;">Load</button>
                     <button class="btn-small" onclick="deleteExperiment(${exp.id})" style="padding: 4px 8px; font-size: 0.75rem;">Delete</button>
                 </td>
             </tr>
@@ -1310,6 +1313,237 @@ async function deleteExperiment(expId) {
     } catch (err) {
         showError('Failed to delete experiment: ' + err.message);
     }
+}
+
+async function loadExperiment(expId) {
+    try {
+        const response = await fetch(`/api/experiments/${expId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Failed to load experiment');
+        }
+        
+        const exp = data.experiment;
+        
+        const fileSelect = document.getElementById('file-select');
+        fileSelect.value = exp.filename;
+        await onFileSelect();
+        
+        currentFilename = exp.filename;
+        currentSelectedAssets = exp.selected_assets || [];
+        currentStrategy = exp.strategy_type;
+        currentParams = exp.params;
+        
+        selectStrategy(exp.strategy_type);
+        
+        if (exp.strategy_type === 'dual_momentum') {
+            const p = exp.params;
+            document.getElementById('lookback').value = p.lookback || 3500;
+            document.getElementById('default-asset').value = p.default_asset || '';
+            document.getElementById('top-n').value = p.top_n || 2;
+            document.getElementById('abs-momentum-threshold').value = p.abs_momentum_threshold || 0;
+            document.getElementById('transaction-cost').value = p.transaction_cost_pct || 0.01;
+            document.getElementById('min-holding-periods').value = p.min_holding_periods || 240;
+            document.getElementById('switch-threshold').value = p.switch_threshold_pct || 0;
+            document.getElementById('rsi-period').value = p.rsi_period || 14;
+            document.getElementById('use-rsi-entry-filter').checked = p.use_rsi_entry_filter || false;
+            document.getElementById('rsi-entry-max').value = p.rsi_entry_max || 30;
+            document.getElementById('use-rsi-entry-queue').checked = p.use_rsi_entry_queue || false;
+            document.getElementById('use-rsi-diff-filter').checked = p.use_rsi_diff_filter || false;
+            document.getElementById('rsi-diff-threshold').value = p.rsi_diff_threshold || 10;
+        } else if (exp.strategy_type === 'cto_line') {
+            const p = exp.params;
+            if (p.cto_params) {
+                document.getElementById('cto-v1').value = p.cto_params[0] || 15;
+                document.getElementById('cto-m1').value = p.cto_params[1] || 19;
+                document.getElementById('cto-m2').value = p.cto_params[2] || 25;
+                document.getElementById('cto-v2').value = p.cto_params[3] || 29;
+            }
+            document.getElementById('cto-direction').value = p.direction || 'both';
+            document.getElementById('cto-default-asset').value = p.default_asset || '';
+            document.getElementById('cto-transaction-cost').value = p.transaction_cost_pct || 0.01;
+            document.getElementById('cto-min-holding-periods').value = p.min_holding_periods || 240;
+        } else if (exp.strategy_type === 'static_alloc') {
+            const p = exp.params;
+            if (p.allocations) {
+                Object.entries(p.allocations).forEach(([asset, pct]) => {
+                    const input = document.getElementById(`static-alloc-${asset}`);
+                    if (input) input.value = pct;
+                });
+            }
+            document.getElementById('static-rebalance-months').value = p.rebalance_months || 0;
+            document.getElementById('static-transaction-cost').value = p.transaction_cost_pct || 0.01;
+            updateStaticAllocSum();
+        } else if (exp.strategy_type === 'blend') {
+            const strategies = exp.params.strategies || [];
+            
+            const container = document.getElementById('blend-strategies-container');
+            container.innerHTML = '';
+            blendStrategies = [];
+            blendStrategyCounter = 0;
+            
+            strategies.forEach((s, idx) => {
+                const newRow = document.createElement('div');
+                newRow.className = 'blend-strategy-row';
+                newRow.dataset.strategyIdx = idx;
+                newRow.innerHTML = `
+                    <div class="blend-strategy-header">
+                        <select class="blend-strategy-type" onchange="onBlendStrategyTypeChange(${idx})">
+                            <option value="dual_momentum" ${s.strategy_type === 'dual_momentum' ? 'selected' : ''}>Dual Momentum</option>
+                            <option value="cto_line" ${s.strategy_type === 'cto_line' ? 'selected' : ''}>CTO Line</option>
+                            <option value="static_alloc" ${s.strategy_type === 'static_alloc' ? 'selected' : ''}>Static Alloc</option>
+                        </select>
+                        <label class="blend-weight-label">Weight: <input type="number" class="blend-weight" value="${s.weight}" min="0" max="100" step="1" onchange="validateBlendWeights()">%</label>
+                        <button class="btn-small blend-remove-btn" onclick="removeBlendStrategy(${idx})">Remove</button>
+                    </div>
+                    <div class="blend-strategy-params" id="blend-params-${idx}">
+                    </div>
+                `;
+                container.appendChild(newRow);
+                
+                blendStrategies.push({
+                    type: s.strategy_type,
+                    weight: s.weight,
+                    assets: s.assets || []
+                });
+                
+                blendStrategyCounter = idx + 1;
+            });
+            
+            setTimeout(() => {
+                strategies.forEach((s, idx) => {
+                    onBlendStrategyTypeChange(idx);
+                    
+                    const row = document.querySelector(`.blend-strategy-row[data-strategy-idx="${idx}"]`);
+                    const p = s.params;
+                    
+                    if (s.strategy_type === 'dual_momentum' && row) {
+                        const lookbackInput = row.querySelector('.blend-param-lookback');
+                        if (lookbackInput) lookbackInput.value = p.lookback || 3500;
+                        const topNInput = row.querySelector('.blend-param-top-n');
+                        if (topNInput) topNInput.value = p.top_n || 2;
+                        const absMomInput = row.querySelector('.blend-param-abs-momentum');
+                        if (absMomInput) absMomInput.value = p.abs_momentum_threshold || 0;
+                        const minHoldInput = row.querySelector('.blend-param-min-holding');
+                        if (minHoldInput) minHoldInput.value = p.min_holding_periods || 240;
+                        const switchThreshInput = row.querySelector('.blend-param-switch-thresh');
+                        if (switchThreshInput) switchThreshInput.value = p.switch_threshold_pct || 0;
+                    } else if (s.strategy_type === 'cto_line' && row) {
+                        const ctoParamsInput = row.querySelector('.blend-param-cto-params');
+                        if (ctoParamsInput && p.cto_params) {
+                            ctoParamsInput.value = p.cto_params.join(',');
+                        }
+                        const directionSelect = row.querySelector('.blend-param-direction');
+                        if (directionSelect) directionSelect.value = p.direction || 'both';
+                        const minHoldInput = row.querySelector('.blend-param-min-holding');
+                        if (minHoldInput) minHoldInput.value = p.min_holding_periods || 240;
+                        const switchThreshInput = row.querySelector('.blend-param-switch-thresh');
+                        if (switchThreshInput) switchThreshInput.value = p.switch_threshold_pct || 0;
+                    } else if (s.strategy_type === 'static_alloc' && row) {
+                        const allocInput = row.querySelector('.blend-param-allocations');
+                        if (allocInput && p.allocations) {
+                            allocInput.value = Object.entries(p.allocations).map(([a, v]) => `${a}:${v}`).join(',');
+                        }
+                        const rebalanceInput = row.querySelector('.blend-param-rebalance-months');
+                        if (rebalanceInput) rebalanceInput.value = p.rebalance_months || 0;
+                    }
+                });
+                
+                updateBlendRemoveButtons();
+                renderBlendAssetMatrix();
+                validateBlendWeights();
+                
+                document.getElementById('blend-transaction-cost').value = exp.params.transaction_cost_pct || 0.01;
+            }, 100);
+        }
+        
+        checkboxes = document.querySelectorAll('#assets-container input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = (exp.selected_assets || []).includes(cb.value);
+        });
+        
+        currentMetrics = exp.params.metrics || exp.metrics || {};
+        
+        displayLoadedExperimentResults(exp);
+        
+        document.getElementById('results').classList.add('active');
+        
+    } catch (err) {
+        showError('Failed to load experiment: ' + err.message);
+    }
+}
+
+function displayLoadedExperimentResults(exp) {
+    const metrics = exp.params.metrics || exp.metrics || {};
+    
+    if (!metrics || Object.keys(metrics).length === 0) {
+        showError('No metrics found in experiment');
+        return;
+    }
+    
+    const metricsHtml = `
+        <div class="metric-card">
+            <div class="metric-label">Period</div>
+            <div class="metric-value">${safeToFixed(metrics.years, 2)} years</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Total Return</div>
+            <div class="metric-value ${metrics.total_return >= 0 ? 'positive' : 'negative'}">${safeToFixed(metrics.total_return)}%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">CAGR</div>
+            <div class="metric-value ${metrics.cagr >= 0 ? 'positive' : 'negative'}">${safeToFixed(metrics.cagr)}%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Max Drawdown</div>
+            <div class="metric-value negative">${safeToFixed(metrics.max_drawdown)}%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Sharpe Ratio</div>
+            <div class="metric-value">${safeToFixed(metrics.sharpe_ratio)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Profit Factor</div>
+            <div class="metric-value">${safeToFixed(metrics.profit_factor)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Longest Underwater</div>
+            <div class="metric-value">${metrics.longest_underwater_days ?? '-'} days</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Calmar Ratio</div>
+            <div class="metric-value">${safeToFixed(metrics.calmar_ratio)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Win Rate</div>
+            <div class="metric-value">${safeToFixed(metrics.win_rate, 1)}%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Orders</div>
+            <div class="metric-value">${metrics.orders_count ?? '-'}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Start Date</div>
+            <div class="metric-value" style="font-size: 1rem;">${metrics.start_date ?? '-'}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">End Date</div>
+            <div class="metric-value" style="font-size: 1rem;">${metrics.end_date ?? '-'}</div>
+        </div>
+    `;
+    
+    document.getElementById('metrics-grid').innerHTML = metricsHtml;
+    
+    document.getElementById('chart-portfolio').src = '';
+    document.getElementById('chart-drawdown').src = '';
+    document.getElementById('chart-monthly').src = '';
+    document.getElementById('chart-sharpe').src = '';
+    
+    document.getElementById('positions-card').style.display = 'none';
+    document.getElementById('trades-section').style.display = 'none';
+    document.getElementById('allocations-section').style.display = 'none';
+    document.getElementById('optim-results').style.display = 'none';
 }
 
 document.addEventListener('DOMContentLoaded', loadFiles);
