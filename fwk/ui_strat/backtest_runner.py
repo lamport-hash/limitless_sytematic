@@ -205,6 +205,8 @@ def run_backtest(
             'sharpe_ratio': metrics['sharpe_ratio'],
             'calmar_ratio': metrics['calmar_ratio'],
             'win_rate': metrics['win_rate'],
+            'profit_factor': metrics['profit_factor'],
+            'longest_underwater_days': metrics['longest_underwater_days'],
             'monthly_returns': monthly_returns_dict,
         },
         'asset_metrics': asset_metrics,
@@ -352,6 +354,8 @@ def run_backtest_cto_line(
             'sharpe_ratio': metrics['sharpe_ratio'],
             'calmar_ratio': metrics['calmar_ratio'],
             'win_rate': metrics['win_rate'],
+            'profit_factor': metrics.get('profit_factor', 0),
+            'longest_underwater_days': metrics.get('longest_underwater_days', 0),
             'monthly_returns': monthly_returns_dict,
         },
         'asset_metrics': asset_metrics,
@@ -366,3 +370,333 @@ def run_backtest_cto_line(
         'orders_df': orders_df,
         'p_df': p_df_result,
     }
+
+
+def run_backtest_static_allocation(
+    filepath: str,
+    selected_assets: List[str],
+    allocations: Dict[str, float],
+    rebalance_months: int = 0,
+    transaction_cost_pct: float = 0.1,
+    run_id: Optional[str] = None,
+) -> Dict:
+    """Run static allocation backtest."""
+    from strat.s_static_alloc import compute_static_allocations
+    
+    if run_id is None:
+        run_id = str(uuid.uuid4())[:8]
+    
+    df, all_assets = load_parquet_file(filepath)
+    
+    assets_to_use = [a for a in selected_assets if a in all_assets]
+    if not assets_to_use:
+        raise ValueError("No valid assets found in the selected file")
+    
+    if not allocations:
+        raise ValueError("Static allocation strategy requires 'allocations' parameter")
+    
+    for asset in allocations:
+        if asset not in assets_to_use:
+            raise ValueError(f"Asset '{asset}' in allocations not in asset list")
+    
+    total = sum(allocations.values())
+    if abs(total - 100.0) > 0.01:
+        raise ValueError(f"Allocations must sum to 100%, got {total}%")
+    
+    df_allocations = compute_static_allocations(
+        p_df=df,
+        p_asset_list=assets_to_use,
+        p_allocations=allocations,
+        p_rebalance_months=rebalance_months,
+    )
+    
+    p_df_result, orders_df = run_full_backtest(df_allocations, assets_to_use, transaction_cost_pct)
+    
+    min_idx = 100
+    p_df_result = p_df_result.iloc[min_idx:].copy()
+    orders_df = orders_df[orders_df['timestamp'] >= min_idx].copy()
+    orders_df['timestamp'] = orders_df['timestamp'] - min_idx
+    orders_df = orders_df.reset_index(drop=True)
+    
+    entries_count = int((orders_df['direction'] > 0).sum()) if len(orders_df) > 0 else 0
+    exits_count = int((orders_df['direction'] < 0).sum()) if len(orders_df) > 0 else 0
+    
+    entries_safe = 0
+    entries_risky = entries_count
+    exits_safe = 0
+    exits_risky = exits_count
+    
+    metrics = calculate_performance_metrics(p_df_result)
+    asset_metrics = calculate_asset_metrics(p_df_result, assets_to_use, orders_df)
+    chart_files = generate_charts(metrics, run_id, assets_to_use)
+    
+    monthly_returns_dict = {}
+    for year, row in metrics['monthly_returns'].iterrows():
+        monthly_returns_dict[int(year)] = {k: (v if not pd.isna(v) else None) for k, v in row.to_dict().items()}
+    
+    return {
+        'run_id': run_id,
+        'metrics': {
+            'start_date': metrics['start_date'].strftime('%Y-%m-%d %H:%M'),
+            'end_date': metrics['end_date'].strftime('%Y-%m-%d %H:%M'),
+            'years': metrics['years'],
+            'start_value': metrics['start_value'],
+            'end_value': metrics['end_value'],
+            'total_return': metrics['total_return'],
+            'cagr': metrics['cagr'],
+            'max_drawdown': metrics['max_drawdown'],
+            'max_drawdown_date': metrics['max_drawdown_date'].strftime('%Y-%m-%d'),
+            'max_drawdown_peak_date': metrics['max_drawdown_peak_date'].strftime('%Y-%m-%d'),
+            'annual_volatility': metrics['annual_volatility'],
+            'sharpe_ratio': metrics['sharpe_ratio'],
+            'calmar_ratio': metrics['calmar_ratio'],
+            'win_rate': metrics['win_rate'],
+            'profit_factor': metrics['profit_factor'],
+            'longest_underwater_days': metrics['longest_underwater_days'],
+            'monthly_returns': monthly_returns_dict,
+        },
+        'asset_metrics': asset_metrics,
+        'charts': chart_files,
+        'orders_count': len(orders_df),
+        'entries_count': entries_count,
+        'exits_count': exits_count,
+        'entries_safe': entries_safe,
+        'entries_risky': entries_risky,
+        'exits_safe': exits_safe,
+        'exits_risky': exits_risky,
+        'orders_df': orders_df,
+        'p_df': p_df_result,
+    }
+
+
+class BlendStrategyConfig:
+    """Configuration for a strategy in a blend."""
+    def __init__(self, strategy_type: str, assets: List[str], params: Dict, weight: float):
+        self.strategy_type = strategy_type
+        self.assets = assets
+        self.params = params
+        self.weight = weight
+
+
+def run_blended_backtest(
+    filepath: str,
+    strategies: List[BlendStrategyConfig],
+    transaction_cost_pct: float = 0.1,
+    run_id: Optional[str] = None,
+) -> Dict:
+    """Run blended backtest combining multiple strategies with different weights."""
+    if run_id is None:
+        run_id = str(uuid.uuid4())[:8]
+    
+    if not strategies:
+        raise ValueError("At least one strategy required for blend")
+    
+    total_weight = sum(s.weight for s in strategies)
+    if abs(total_weight - 100.0) > 0.01:
+        raise ValueError(f"Strategy weights must sum to 100%, got {total_weight}%")
+    
+    df, all_assets = load_parquet_file(filepath)
+    
+    all_blend_assets = set()
+    for s in strategies:
+        for a in s.assets:
+            if a in all_assets:
+                all_blend_assets.add(a)
+    all_blend_assets = sorted(all_blend_assets)
+    
+    if not all_blend_assets:
+        raise ValueError("No valid assets found in any strategy")
+    
+    allocation_dfs = []
+    warmup_bars_list = []
+    
+    for strat in strategies:
+        valid_assets = [a for a in strat.assets if a in all_assets]
+        if not valid_assets:
+            continue
+        
+        if strat.strategy_type == "dual_momentum":
+            df_alloc, warmup = _run_dual_momentum_for_blend(
+                df.copy(), valid_assets, strat.params
+            )
+        elif strat.strategy_type == "cto_line":
+            df_alloc, warmup = _run_cto_line_for_blend(
+                df.copy(), valid_assets, strat.params
+            )
+        elif strat.strategy_type == "static_alloc":
+            df_alloc, warmup = _run_static_alloc_for_blend(
+                df.copy(), valid_assets, strat.params
+            )
+        else:
+            raise ValueError(f"Unknown strategy type: {strat.strategy_type}")
+        
+        weight_factor = strat.weight / 100.0
+        
+        for asset in valid_assets:
+            alloc_col = f"A_{asset}_alloc"
+            if alloc_col in df_alloc.columns:
+                df_alloc[alloc_col] = df_alloc[alloc_col] * weight_factor
+        
+        allocation_dfs.append((df_alloc, valid_assets))
+        warmup_bars_list.append(warmup)
+    
+    max_warmup = max(warmup_bars_list) if warmup_bars_list else 0
+    
+    blended_df = df.copy()
+    for asset in all_blend_assets:
+        blended_df[f"A_{asset}_alloc"] = 0.0
+    
+    for df_alloc, strat_assets in allocation_dfs:
+        for asset in strat_assets:
+            alloc_col = f"A_{asset}_alloc"
+            if alloc_col in df_alloc.columns:
+                blended_df[f"A_{asset}_alloc"] = blended_df[f"A_{asset}_alloc"].add(
+                    df_alloc[alloc_col], fill_value=0
+                )
+    
+    p_df_result, orders_df = run_full_backtest(blended_df, all_blend_assets, transaction_cost_pct)
+    
+    min_idx = max(max_warmup, 100)
+    p_df_result = p_df_result.iloc[min_idx:].copy()
+    
+    orders_df = orders_df[orders_df['timestamp'] >= min_idx].copy()
+    orders_df['timestamp'] = orders_df['timestamp'] - min_idx
+    orders_df = orders_df.reset_index(drop=True)
+    
+    entries_count = int((orders_df['direction'] > 0).sum()) if len(orders_df) > 0 else 0
+    exits_count = int((orders_df['direction'] < 0).sum()) if len(orders_df) > 0 else 0
+    
+    entries_safe = 0
+    entries_risky = entries_count
+    exits_safe = 0
+    exits_risky = exits_count
+    
+    metrics = calculate_performance_metrics(p_df_result)
+    asset_metrics = calculate_asset_metrics(p_df_result, all_blend_assets, orders_df)
+    chart_files = generate_charts(metrics, run_id, all_blend_assets)
+    
+    monthly_returns_dict = {}
+    for year, row in metrics['monthly_returns'].iterrows():
+        monthly_returns_dict[int(year)] = {k: (v if not pd.isna(v) else None) for k, v in row.to_dict().items()}
+    
+    return {
+        'run_id': run_id,
+        'metrics': {
+            'start_date': metrics['start_date'].strftime('%Y-%m-%d %H:%M'),
+            'end_date': metrics['end_date'].strftime('%Y-%m-%d %H:%M'),
+            'years': metrics['years'],
+            'start_value': metrics['start_value'],
+            'end_value': metrics['end_value'],
+            'total_return': metrics['total_return'],
+            'cagr': metrics['cagr'],
+            'max_drawdown': metrics['max_drawdown'],
+            'max_drawdown_date': metrics['max_drawdown_date'].strftime('%Y-%m-%d'),
+            'max_drawdown_peak_date': metrics['max_drawdown_peak_date'].strftime('%Y-%m-%d'),
+            'annual_volatility': metrics['annual_volatility'],
+            'sharpe_ratio': metrics['sharpe_ratio'],
+            'calmar_ratio': metrics['calmar_ratio'],
+            'win_rate': metrics['win_rate'],
+            'monthly_returns': monthly_returns_dict,
+        },
+        'asset_metrics': asset_metrics,
+        'charts': chart_files,
+        'orders_count': len(orders_df),
+        'entries_count': entries_count,
+        'exits_count': exits_count,
+        'entries_safe': entries_safe,
+        'entries_risky': entries_risky,
+        'exits_safe': exits_safe,
+        'exits_risky': exits_risky,
+        'orders_df': orders_df,
+        'p_df': p_df_result,
+    }
+
+
+def _run_dual_momentum_for_blend(
+    df: pd.DataFrame,
+    assets: List[str],
+    params: Dict,
+) -> Tuple[pd.DataFrame, int]:
+    """Run dual momentum strategy and return allocations df + warmup bars."""
+    lookback = params.get('lookback', 3500)
+    default_asset = params.get('default_asset', assets[0])
+    top_n = params.get('top_n', 1)
+    abs_momentum_threshold = params.get('abs_momentum_threshold', 0.0)
+    min_holding_periods = params.get('min_holding_periods', 0)
+    switch_threshold_pct = params.get('switch_threshold_pct', 0.0)
+    
+    default_asset_idx = assets.index(default_asset) if default_asset in assets else 0
+    
+    feature_id = f"F_roctrue_{lookback}_F_mid_f32_f16"
+    df_with_roc = generate_roc_features(df, assets, lookback)
+    
+    df_allocations = compute_dual_momentum(
+        p_df=df_with_roc,
+        p_feature_id=feature_id,
+        p_default_asset_idx=default_asset_idx,
+        p_default_asset=default_asset,
+        p_top_n=top_n,
+        p_abs_momentum_threshold=abs_momentum_threshold,
+        p_asset_list=assets,
+        p_min_holding_periods=min_holding_periods,
+        p_switch_threshold_pct=switch_threshold_pct,
+    )
+    
+    return df_allocations, lookback
+
+
+def _run_cto_line_for_blend(
+    df: pd.DataFrame,
+    assets: List[str],
+    params: Dict,
+) -> Tuple[pd.DataFrame, int]:
+    """Run CTO Line strategy and return allocations df + warmup bars."""
+    cto_params = params.get('cto_params', [15, 19, 25, 29])
+    if isinstance(cto_params, list):
+        cto_params = tuple(cto_params)
+    direction = params.get('direction', 'both')
+    default_asset = params.get('default_asset', assets[0])
+    min_holding_periods = params.get('min_holding_periods', 0)
+    switch_threshold_pct = params.get('switch_threshold_pct', 0.0)
+    cap_to_half_assets = params.get('cap_to_half_assets', True)
+    
+    df_allocations = compute_cto_line_allocations(
+        p_df=df,
+        p_asset_list=assets,
+        p_cto_params=cto_params,
+        p_direction=direction,
+        p_default_asset=default_asset,
+        p_min_holding_periods=min_holding_periods,
+        p_switch_threshold_pct=switch_threshold_pct,
+        p_cap_to_half_assets=cap_to_half_assets,
+    )
+    
+    return df_allocations, max(cto_params)
+
+
+def _run_static_alloc_for_blend(
+    df: pd.DataFrame,
+    assets: List[str],
+    params: Dict,
+) -> Tuple[pd.DataFrame, int]:
+    """Run static allocation strategy and return allocations df + warmup bars."""
+    from strat.s_static_alloc import compute_static_allocations
+    
+    allocations = params.get('allocations', {})
+    rebalance_months = params.get('rebalance_months', 0)
+    
+    if not allocations:
+        raise ValueError("Static allocation strategy requires 'allocations' parameter")
+    
+    for asset in allocations:
+        if asset not in assets:
+            raise ValueError(f"Asset '{asset}' in allocations not in asset list")
+    
+    df_allocations = compute_static_allocations(
+        p_df=df,
+        p_asset_list=assets,
+        p_allocations=allocations,
+        p_rebalance_months=rebalance_months,
+    )
+    
+    return df_allocations, 0

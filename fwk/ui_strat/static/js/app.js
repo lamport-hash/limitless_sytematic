@@ -11,6 +11,11 @@ let blendStrategies = [
 ];
 let blendStrategyCounter = 2;
 
+function safeToFixed(val, decimals = 2) {
+    if (val === undefined || val === null || isNaN(val)) return '-';
+    return Number(val).toFixed(decimals);
+}
+
 function selectStrategy(strategy) {
     currentStrategy = strategy;
     document.getElementById('strategy-type').value = strategy;
@@ -749,67 +754,67 @@ function displayResults(data) {
     const metricsHtml = `
         <div class="metric-card">
             <div class="metric-label">Period</div>
-            <div class="metric-value">${metrics.years} years</div>
+            <div class="metric-value">${safeToFixed(metrics.years, 2)} years</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Total Return</div>
-            <div class="metric-value ${metrics.total_return >= 0 ? 'positive' : 'negative'}">${metrics.total_return.toFixed(2)}%</div>
+            <div class="metric-value ${metrics.total_return >= 0 ? 'positive' : 'negative'}">${safeToFixed(metrics.total_return)}%</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">CAGR</div>
-            <div class="metric-value ${metrics.cagr >= 0 ? 'positive' : 'negative'}">${metrics.cagr.toFixed(2)}%</div>
+            <div class="metric-value ${metrics.cagr >= 0 ? 'positive' : 'negative'}">${safeToFixed(metrics.cagr)}%</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Max Drawdown</div>
-            <div class="metric-value negative">${metrics.max_drawdown.toFixed(2)}%</div>
+            <div class="metric-value negative">${safeToFixed(metrics.max_drawdown)}%</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Sharpe Ratio</div>
-            <div class="metric-value">${metrics.sharpe_ratio.toFixed(2)}</div>
+            <div class="metric-value">${safeToFixed(metrics.sharpe_ratio)}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Profit Factor</div>
-            <div class="metric-value">${metrics.profit_factor.toFixed(2)}</div>
+            <div class="metric-value">${safeToFixed(metrics.profit_factor)}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Longest Underwater</div>
-            <div class="metric-value">${metrics.longest_underwater_days} days</div>
+            <div class="metric-value">${metrics.longest_underwater_days ?? '-'} days</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Calmar Ratio</div>
-            <div class="metric-value">${metrics.calmar_ratio.toFixed(2)}</div>
+            <div class="metric-value">${safeToFixed(metrics.calmar_ratio)}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Win Rate</div>
-            <div class="metric-value">${metrics.win_rate.toFixed(1)}%</div>
+            <div class="metric-value">${safeToFixed(metrics.win_rate, 1)}%</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Orders</div>
-            <div class="metric-value">${data.orders_count}</div>
+            <div class="metric-value">${data.orders_count ?? 0}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Entries (Safe)</div>
-            <div class="metric-value" style="color: #4ecca3; font-size: 1.1rem;">${data.entries_safe}</div>
+            <div class="metric-value" style="color: #4ecca3; font-size: 1.1rem;">${data.entries_safe ?? 0}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Entries (Risky)</div>
-            <div class="metric-value" style="color: #3498db; font-size: 1.1rem;">${data.entries_risky}</div>
+            <div class="metric-value" style="color: #3498db; font-size: 1.1rem;">${data.entries_risky ?? 0}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Exits (Safe)</div>
-            <div class="metric-value" style="color: #f39c12; font-size: 1.1rem;">${data.exits_safe}</div>
+            <div class="metric-value" style="color: #f39c12; font-size: 1.1rem;">${data.exits_safe ?? 0}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Exits (Risky)</div>
-            <div class="metric-value" style="color: #e74c3c; font-size: 1.1rem;">${data.exits_risky}</div>
+            <div class="metric-value" style="color: #e74c3c; font-size: 1.1rem;">${data.exits_risky ?? 0}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Start Date</div>
-            <div class="metric-value" style="font-size: 1rem;">${metrics.start_date}</div>
+            <div class="metric-value" style="font-size: 1rem;">${metrics.start_date ?? '-'}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">End Date</div>
-            <div class="metric-value" style="font-size: 1rem;">${metrics.end_date}</div>
+            <div class="metric-value" style="font-size: 1rem;">${metrics.end_date ?? '-'}</div>
         </div>
     `;
     
@@ -823,24 +828,24 @@ function displayResults(data) {
     if (data.asset_metrics) {
         for (const [asset, am] of Object.entries(data.asset_metrics)) {
             nAssets++;
-            sumTotalReturn += am.total_return;
-            sumMaxDD += am.max_drawdown;
-            sumSharpe += am.sharpe_ratio;
-            sumCandles += am.candles_allocated;
-            sumPctAlloc += am.pct_allocated;
-            sumStratReturn += am.strat_return;
-            sumEntries += am.entries;
+            sumTotalReturn += am.total_return || 0;
+            sumMaxDD += am.max_drawdown || 0;
+            sumSharpe += am.sharpe_ratio || 0;
+            sumCandles += am.candles_allocated || 0;
+            sumPctAlloc += am.pct_allocated || 0;
+            sumStratReturn += am.strat_return || 0;
+            sumEntries += am.entries || 0;
             
             assetTableHtml += `
                 <tr>
                     <td>${asset}</td>
-                    <td class="${am.total_return >= 0 ? 'positive' : 'negative'}">${am.total_return.toFixed(2)}%</td>
-                    <td class="negative">${am.max_drawdown.toFixed(2)}%</td>
-                    <td>${am.sharpe_ratio.toFixed(2)}</td>
-                    <td>${am.candles_allocated.toLocaleString()}</td>
-                    <td>${am.pct_allocated.toFixed(1)}%</td>
-                    <td class="${am.strat_return >= 0 ? 'positive' : 'negative'}">${am.strat_return.toFixed(2)}%</td>
-                    <td>${am.entries}</td>
+                    <td class="${am.total_return >= 0 ? 'positive' : 'negative'}">${safeToFixed(am.total_return)}%</td>
+                    <td class="negative">${safeToFixed(am.max_drawdown)}%</td>
+                    <td>${safeToFixed(am.sharpe_ratio)}</td>
+                    <td>${(am.candles_allocated || 0).toLocaleString()}</td>
+                    <td>${safeToFixed(am.pct_allocated, 1)}%</td>
+                    <td class="${am.strat_return >= 0 ? 'positive' : 'negative'}">${safeToFixed(am.strat_return)}%</td>
+                    <td>${am.entries || 0}</td>
                 </tr>
             `;
         }
@@ -855,12 +860,12 @@ function displayResults(data) {
         const footerHtml = `
             <tr style="background: rgba(78, 204, 163, 0.1);">
                 <td style="color: #4ecca3;">TOTAL/AVG</td>
-                <td class="${avgTotalReturn >= 0 ? 'positive' : 'negative'}">${avgTotalReturn.toFixed(2)}%</td>
-                <td class="negative">${avgMaxDD.toFixed(2)}%</td>
-                <td>${avgSharpe.toFixed(2)}</td>
+                <td class="${avgTotalReturn >= 0 ? 'positive' : 'negative'}">${safeToFixed(avgTotalReturn)}%</td>
+                <td class="negative">${safeToFixed(avgMaxDD)}%</td>
+                <td>${safeToFixed(avgSharpe)}</td>
                 <td>${sumCandles.toLocaleString()}</td>
-                <td>${sumPctAlloc.toFixed(1)}%</td>
-                <td class="${sumStratReturn >= 0 ? 'positive' : 'negative'}">${sumStratReturn.toFixed(2)}%</td>
+                <td>${safeToFixed(sumPctAlloc, 1)}%</td>
+                <td class="${sumStratReturn >= 0 ? 'positive' : 'negative'}">${safeToFixed(sumStratReturn)}%</td>
                 <td>${sumEntries}</td>
             </tr>
         `;
@@ -883,12 +888,12 @@ function displayResults(data) {
                 <tr>
                     <td>${pos.asset}</td>
                     <td class="${sideClass}" style="font-weight: 600;">${sideDisplay}</td>
-                    <td style="font-size: 0.85rem;">${pos.entry_date}</td>
-                    <td>${pos.entry_price.toFixed(4)}</td>
-                    <td>${pos.current_price.toFixed(4)}</td>
-                    <td>${pos.quantity.toFixed(4)}</td>
-                    <td>${pos.market_value.toFixed(2)}</td>
-                    <td class="${pnlClass}">${pos.unrealized_pnl_pct.toFixed(2)}%</td>
+                    <td style="font-size: 0.85rem;">${pos.entry_date ?? '-'}</td>
+                    <td>${safeToFixed(pos.entry_price, 4)}</td>
+                    <td>${safeToFixed(pos.current_price, 4)}</td>
+                    <td>${safeToFixed(pos.quantity, 4)}</td>
+                    <td>${safeToFixed(pos.market_value)}</td>
+                    <td class="${pnlClass}">${safeToFixed(pos.unrealized_pnl_pct)}%</td>
                 </tr>
             `;
         });
@@ -954,15 +959,15 @@ function displayTrades(trades) {
             <tr>
                 <td>${trade.asset}</td>
                 <td class="${sideClass}" style="font-weight: 600;">${sideDisplay}</td>
-                <td style="font-size: 0.85rem;">${trade.entry_date}</td>
-                <td>${trade.entry_price.toFixed(4)}</td>
-                <td>${trade.entry_qty.toFixed(4)}</td>
-                <td style="font-size: 0.85rem;">${trade.exit_date}</td>
-                <td>${trade.exit_price.toFixed(4)}</td>
-                <td>${trade.exit_qty.toFixed(4)}</td>
-                <td class="${returnClass}">${trade.return_pct.toFixed(2)}%</td>
-                <td class="negative">${trade.max_dd_pct.toFixed(2)}%</td>
-                <td>${trade.duration_bars}</td>
+                <td style="font-size: 0.85rem;">${trade.entry_date ?? '-'}</td>
+                <td>${safeToFixed(trade.entry_price, 4)}</td>
+                <td>${safeToFixed(trade.entry_qty, 4)}</td>
+                <td style="font-size: 0.85rem;">${trade.exit_date ?? '-'}</td>
+                <td>${safeToFixed(trade.exit_price, 4)}</td>
+                <td>${safeToFixed(trade.exit_qty, 4)}</td>
+                <td class="${returnClass}">${safeToFixed(trade.return_pct)}%</td>
+                <td class="negative">${safeToFixed(trade.max_dd_pct)}%</td>
+                <td>${trade.duration_bars ?? 0}</td>
             </tr>
         `;
     });
@@ -1024,12 +1029,12 @@ function displayAllocations(allocations) {
     let tableHtml = '';
     allocations.forEach(row => {
         tableHtml += `<tr>`;
-        tableHtml += `<td style="font-size: 0.85rem;">${row.datetime}</td>`;
-        tableHtml += `<td>${row.i_minute}</td>`;
+        tableHtml += `<td style="font-size: 0.85rem;">${row.datetime ?? '-'}</td>`;
+        tableHtml += `<td>${row.i_minute ?? 0}</td>`;
         assetKeys.forEach(asset => {
             const val = row[asset];
             const valClass = val > 0 ? 'positive' : '';
-            tableHtml += `<td class="${valClass}">${val.toFixed(4)}</td>`;
+            tableHtml += `<td class="${valClass}">${safeToFixed(val, 4)}</td>`;
         });
         tableHtml += `</tr>`;
     });

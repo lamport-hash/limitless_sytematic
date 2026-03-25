@@ -56,18 +56,63 @@ def calculate_performance_metrics(p_df: pd.DataFrame, risk_free_rate: float = 0.
     p_df['pnl'] = p_df['port_value'] - start_value
     p_df['pnl_pct'] = (p_df['port_value'] / start_value - 1) * 100
     
-    daily_returns = p_df['daily_returns']
-    daily_vol = daily_returns.std()
+    daily_returns = p_df['daily_returns'].dropna() if 'daily_returns' in p_df.columns else pd.Series()
+    daily_vol = daily_returns.std() if len(daily_returns) > 0 else 0
     annual_vol = daily_vol * math.sqrt(365) if daily_vol > 0 else 0
     
-    excess_returns = daily_returns - risk_free_rate/365
+    excess_returns = daily_returns - risk_free_rate/365 if len(daily_returns) > 0 else pd.Series()
     sharpe_ratio = math.sqrt(365) * excess_returns.mean() / daily_vol if daily_vol > 0 else 0
     
     calmar_ratio = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
     
-    winning_days = len(daily_returns[daily_returns > 0])
-    total_days = len(daily_returns)
+    winning_days = len(daily_returns[daily_returns > 0]) if len(daily_returns) > 0 else 0
+    losing_days = len(daily_returns[daily_returns < 0]) if len(daily_returns) > 0 else 0
+    total_days = len(daily_returns) if len(daily_returns) > 0 else 0
     win_rate = (winning_days / total_days * 100) if total_days > 0 else 0
+    
+    gross_profits = daily_returns[daily_returns > 0].sum() if len(daily_returns) > 0 else 0
+    gross_losses = abs(daily_returns[daily_returns < 0].sum()) if len(daily_returns) > 0 else 0
+    profit_factor = gross_profits / gross_losses if gross_losses > 0 else float('inf') if gross_profits > 0 else 0
+    
+    p_df['is_underwater'] = p_df['drawdown'] < 0
+    p_df['prev_cummax'] = p_df['cumulative_max'].shift(1)
+    p_df['is_at_high_watermark'] = p_df['port_value'] >= p_df['prev_cummax']
+    p_df.loc[p_df.index[0], 'is_at_high_watermark'] = True
+    
+    recovery_indices = p_df.index[p_df['is_at_high_watermark']].tolist()
+    
+    if len(recovery_indices) < 2:
+        longest_underwater_days = 0
+    else:
+        recovery_gaps_days = []
+        for i in range(1, len(recovery_indices)):
+            d1 = p_df.loc[recovery_indices[i], 'date']
+            d0 = p_df.loc[recovery_indices[i-1], 'date']
+            days_diff = (d1 - d0).days
+            recovery_gaps_days.append(days_diff)
+        longest_underwater_days = max(recovery_gaps_days) if recovery_gaps_days else 0
+    
+    gross_profits = daily_returns[daily_returns > 0].sum()
+    gross_losses = abs(daily_returns[daily_returns < 0].sum())
+    profit_factor = gross_profits / gross_losses if gross_losses > 0 else float('inf') if gross_profits > 0 else 0
+    
+    p_df['is_underwater'] = p_df['drawdown'] < 0
+    p_df['prev_cummax'] = p_df['cumulative_max'].shift(1)
+    p_df['is_at_high_watermark'] = p_df['port_value'] >= p_df['prev_cummax']
+    p_df.loc[p_df.index[0], 'is_at_high_watermark'] = True
+    
+    recovery_indices = p_df.index[p_df['is_at_high_watermark']].tolist()
+    
+    if len(recovery_indices) < 2:
+        longest_underwater_days = 0
+    else:
+        recovery_gaps_days = []
+        for i in range(1, len(recovery_indices)):
+            d1 = p_df.loc[recovery_indices[i], 'date']
+            d0 = p_df.loc[recovery_indices[i-1], 'date']
+            days_diff = (d1 - d0).days
+            recovery_gaps_days.append(days_diff)
+        longest_underwater_days = max(recovery_gaps_days) if recovery_gaps_days else 0
     
     p_df['year'] = p_df['date'].dt.year
     p_df['month'] = p_df['date'].dt.month
@@ -108,6 +153,8 @@ def calculate_performance_metrics(p_df: pd.DataFrame, risk_free_rate: float = 0.
         'sharpe_ratio': round(sharpe_ratio, 2),
         'calmar_ratio': round(calmar_ratio, 2),
         'win_rate': round(win_rate, 2),
+        'profit_factor': round(profit_factor, 2) if profit_factor != float('inf') else 999.99,
+        'longest_underwater_days': round(longest_underwater_days, 0),
         'monthly_returns': monthly_returns_pivot,
         'df_with_metrics': p_df
     }
