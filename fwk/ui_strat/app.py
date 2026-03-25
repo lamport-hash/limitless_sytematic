@@ -22,9 +22,15 @@ from ui_strat.backtest_runner import (
     load_parquet_file,
     run_backtest,
     run_backtest_cto_line,
+    run_backtest_static_allocation,
     compute_trades_from_orders,
     compute_current_positions,
+    run_blended_backtest,
+    BlendStrategyConfig,
 )
+from ui_strat.optimizer import run_optimization
+from ui_strat.optim_charts import generate_optim_charts
+from ui_strat.experiments_db import save_experiment, list_experiments, delete_experiment
 
 warnings.filterwarnings('ignore')
 
@@ -62,6 +68,71 @@ class BacktestRequest(BaseModel):
     cto_params: Optional[Tuple[int, int, int, int]] = None
     direction: str = "both"
     cap_to_half_assets: bool = True
+    allocations: Optional[Dict[str, float]] = None
+    rebalance_months: int = 0
+
+
+class OptimRequest(BaseModel):
+    filename: str
+    selected_assets: List[str]
+    default_asset: str
+    top_n: int = 1
+    abs_momentum_threshold: float = 0.0
+    transaction_cost_pct: float = 0.01
+    min_holding_periods: int = 240
+    switch_threshold_pct: float = 0.0
+    lookback_min: int = 100
+    lookback_max: int = 10000
+    num_steps: int = 50
+
+
+class OptimResponse(BaseModel):
+    run_id: str
+    lookback_range: List[int]
+    num_steps: int
+    results: List[Dict]
+    best_by_cagr: Optional[Dict] = None
+    best_by_sharpe: Optional[Dict] = None
+    chart: Optional[str] = None
+
+
+class SaveExperimentRequest(BaseModel):
+    name: Optional[str] = None
+    filename: str
+    strategy_type: str
+    params: Dict
+    metrics: Dict
+    selected_assets: List[str]
+
+
+class ExperimentResponse(BaseModel):
+    id: int
+    name: Optional[str]
+    filename: str
+    strategy_type: str
+    params: Dict
+    total_return: Optional[float]
+    cagr: Optional[float]
+    max_dd: Optional[float]
+    win_rate: Optional[float]
+    orders: Optional[int]
+    lookback: Optional[int]
+    top_n: Optional[int]
+    selected_assets: List[str]
+    created_at: str
+
+
+class BlendStrategyParams(BaseModel):
+    strategy_type: str
+    weight: float
+    assets: List[str]
+    params: Dict
+
+
+class BlendRequest(BaseModel):
+    filename: str
+    strategies: List[BlendStrategyParams]
+    transaction_cost_pct: float = 0.01
 
 
 class BacktestResponse(BaseModel):
@@ -137,6 +208,17 @@ async def api_run_backtest(request: BacktestRequest):
                 transaction_cost_pct=request.transaction_cost_pct,
                 min_holding_periods=request.min_holding_periods,
                 cap_to_half_assets=request.cap_to_half_assets,
+                run_id=run_id
+            )
+        elif request.strategy_type == "static_alloc":
+            if not request.allocations:
+                raise HTTPException(status_code=400, detail="Static allocation requires 'allocations' parameter")
+            result = run_backtest_static_allocation(
+                filepath=str(filepath),
+                selected_assets=request.selected_assets,
+                allocations=request.allocations,
+                rebalance_months=request.rebalance_months,
+                transaction_cost_pct=request.transaction_cost_pct,
                 run_id=run_id
             )
         else:
@@ -256,6 +338,153 @@ async def get_backtest_allocations(run_id: str):
             prev_allocs = current_allocs
         
         return {"allocations": allocations, "count": len(allocations)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/run-blend", response_model=BacktestResponse)
+async def api_run_blend(request: BlendRequest):
+    try:
+        filepath = BUNDLE_DIR / request.filename
+        if not filepath.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        run_id = str(uuid.uuid4())[:8]
+        
+        strategies = [
+            BlendStrategyConfig(
+                strategy_type=s.strategy_type,
+                weight=s.weight,
+                assets=s.assets,
+                params=s.params,
+            )
+            for s in request.strategies
+        ]
+        
+        result = run_blended_backtest(
+            filepath=str(filepath),
+            strategies=strategies,
+            transaction_cost_pct=request.transaction_cost_pct,
+            run_id=run_id
+        )
+        
+        BACKTEST_CACHE[run_id] = {
+            'orders_df': result.get('orders_df'),
+            'p_df': result.get('p_df'),
+            'assets': list(result.get('asset_metrics', {}).keys())
+        }
+        
+        current_positions = compute_current_positions(
+            result.get('orders_df'),
+            result.get('p_df'),
+            list(result.get('asset_metrics', {}).keys())
+        )
+        
+        return BacktestResponse(
+            run_id=run_id,
+            metrics=result["metrics"],
+            asset_metrics=result["asset_metrics"],
+            charts=result["charts"],
+            orders_count=result["orders_count"],
+            entries_count=result["entries_count"],
+            exits_count=result["exits_count"],
+            entries_safe=result["entries_safe"],
+            entries_risky=result["entries_risky"],
+            exits_safe=result["exits_safe"],
+            exits_risky=result["exits_risky"],
+            current_positions=current_positions
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/run-optim", response_model=OptimResponse)
+async def api_run_optimization(request: OptimRequest):
+    try:
+        filepath = BUNDLE_DIR / request.filename
+        if not filepath.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        run_id = str(uuid.uuid4())[:8]
+        
+        result = run_optimization(
+            filepath=str(filepath),
+            selected_assets=request.selected_assets,
+            default_asset=request.default_asset,
+            top_n=request.top_n,
+            abs_momentum_threshold=request.abs_momentum_threshold,
+            transaction_cost_pct=request.transaction_cost_pct,
+            min_holding_periods=request.min_holding_periods,
+            switch_threshold_pct=request.switch_threshold_pct,
+            lookback_min=request.lookback_min,
+            lookback_max=request.lookback_max,
+            num_steps=request.num_steps,
+            run_id=run_id
+        )
+        
+        chart_files = generate_optim_charts(
+            result['results'],
+            run_id,
+            result['lookback_range']
+        )
+        
+        return OptimResponse(
+            run_id=result['run_id'],
+            lookback_range=result['lookback_range'],
+            num_steps=result['num_steps'],
+            results=result['results'],
+            best_by_cagr=result['best_by_cagr'],
+            best_by_sharpe=result['best_by_sharpe'],
+            chart=chart_files.get('optim')
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/save-experiment")
+async def api_save_experiment(request: SaveExperimentRequest):
+    try:
+        exp_id = save_experiment(
+            filename=request.filename,
+            strategy_type=request.strategy_type,
+            params=request.params,
+            metrics=request.metrics,
+            selected_assets=request.selected_assets,
+            name=request.name
+        )
+        return {"id": exp_id, "message": "Experiment saved successfully"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/experiments")
+async def api_list_experiments(limit: int = 100):
+    try:
+        experiments = list_experiments(limit=limit)
+        return {"experiments": experiments, "count": len(experiments)}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/experiments/{exp_id}")
+async def api_delete_experiment(exp_id: int):
+    try:
+        deleted = delete_experiment(exp_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+        return {"message": "Experiment deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:

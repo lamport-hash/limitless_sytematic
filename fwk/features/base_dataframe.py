@@ -391,7 +391,7 @@ class BaseDataFrame:
 
     def _add_volume(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
         """Volume features - reference to source columns."""
-        for col in [g_volume_col, g_qa_vol_col, g_la_vol_col, g_lqa_vol_col]:
+        for col in [g_volume_col]:
             self._register_feature(col, FeatureType.VOLUME)
 
     def _add_log_return(self, periods: Optional[List[int]] = None, **kwargs: Any) -> None:
@@ -409,7 +409,6 @@ class BaseDataFrame:
 
     def _add_lag_deltas(
         self,
-        periods: Optional[List[int]] = None,
         n_lags: int = 72,
         n_minutes: int = 60,
         **kwargs: Any,

@@ -4,8 +4,8 @@ Strategy Parameter Models.
 Pydantic models for validating strategy parameters in the UI.
 """
 
-from typing import List, Tuple, Optional
-from pydantic import BaseModel, Field
+from typing import List, Tuple, Optional, Dict
+from pydantic import BaseModel, Field, model_validator
 
 
 class DualMomentumParams(BaseModel):
@@ -55,16 +55,41 @@ class CtoLineParams(BaseModel):
         return v
 
 
+class StaticAllocationParams(BaseModel):
+    """Parameters for Static Allocation strategy."""
+    
+    allocations: Dict[str, float] = Field(
+        ...,
+        description="Asset -> percentage allocation (must sum to 100)"
+    )
+    rebalance_months: int = Field(
+        default=0,
+        ge=0,
+        description="Rebalancing frequency in months. 0=never, N=every N months on 1st"
+    )
+    
+    @model_validator(mode='after')
+    def validate_allocations(self):
+        total = sum(self.allocations.values())
+        if abs(total - 100.0) > 0.01:
+            raise ValueError(f"Allocations must sum to 100%, got {total}%")
+        for asset, pct in self.allocations.items():
+            if pct < 0:
+                raise ValueError(f"Allocation for '{asset}' cannot be negative: {pct}%")
+        return self
+
+
 class BacktestRequest(BaseModel):
     """Request model for running a backtest."""
     
     filename: str = Field(..., description="Parquet file name")
     selected_assets: List[str] = Field(..., min_length=1, description="Assets to include in backtest")
-    strategy_type: str = Field(default="dual_momentum", description="Strategy type: dual_momentum or cto_line")
+    strategy_type: str = Field(default="dual_momentum", description="Strategy type: dual_momentum, cto_line, or static_alloc")
     transaction_cost_pct: float = Field(default=0.01, ge=0, le=10, description="Transaction cost percentage")
     
     dual_momentum_params: Optional[DualMomentumParams] = None
     cto_line_params: Optional[CtoLineParams] = None
+    static_alloc_params: Optional[StaticAllocationParams] = None
 
 
 STRATEGY_TYPES = {
@@ -77,6 +102,11 @@ STRATEGY_TYPES = {
         "display_name": "CTO Line",
         "description": "Colored Trend Oscillator: SMMA crossover signals for basket allocation",
         "params_model": CtoLineParams,
+    },
+    "static_alloc": {
+        "display_name": "Static Allocation",
+        "description": "Fixed percentage allocation per asset with optional periodic rebalancing",
+        "params_model": StaticAllocationParams,
     },
 }
 

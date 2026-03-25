@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/assets", tags=["assets"])
 def get_frequencies() -> List[Dict[str, str]]:
     """List available data frequencies."""
     return [
+        {"value": MktDataTFreq.CANDLE_1DAY.value, "label": "1 Day Candles"},
         {"value": MktDataTFreq.CANDLE_1HOUR.value, "label": "1 Hour Candles"},
         {"value": MktDataTFreq.CANDLE_1MIN.value, "label": "1 Minute Candles"},
     ]
@@ -24,6 +25,7 @@ def get_frequencies() -> List[Dict[str, str]]:
 def get_product_types() -> List[Dict[str, str]]:
     """List available product types."""
     return [
+        {"value": ProductType.SPOT.value, "label": "Crypto"},
         {"value": ProductType.SPOT.value, "label": "Spot (FX)"},
         {"value": ProductType.ETF.value, "label": "ETF"},
         {"value": ProductType.FUTURE.value, "label": "Future"},

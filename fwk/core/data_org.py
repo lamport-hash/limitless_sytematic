@@ -48,6 +48,7 @@ class ProductType(Enum):
     SPOT = "spot"
     OPTION = "option"
     ETF = "etf"
+    STOCKS = "stocks"
 
 
 def get_data_dir() -> Path:

@@ -30,6 +30,80 @@ DIRECTION_SHORT = -1
 DIRECTION_BOTH = 0
 
 
+import numpy as np
+import pandas as pd
+import numpy as np
+from numba import njit
+
+
+@njit
+def trailing_stop_numba(
+    signal: np.ndarray,
+    open_: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    vol: np.ndarray,
+    atr: np.ndarray,
+    atr_mult: float = 2.0,
+) -> np.ndarray:
+    n = close.shape[0]
+    ts_signal = np.zeros(n, dtype=np.int8)
+
+    position = 0  # 1 = long, -1 = short, 0 = flat
+    stop = 0.0
+    has_stop = False  # avoids NaN inside numba
+
+    for i in range(n):
+        sig = signal[i]
+        c = close[i]
+        h = high[i]
+        l = low[i]
+        a = atr[i]
+
+        # --- ENTRY ---
+        if position == 0:
+            if sig > 0:
+                position = 1
+                stop = c - atr_mult * a
+                has_stop = True
+            elif sig < 0:
+                position = -1
+                stop = c + atr_mult * a
+                has_stop = True
+
+        # --- LONG ---
+        elif position == 1:
+            new_stop = c - atr_mult * a
+            if new_stop > stop:
+                stop = new_stop
+
+            if has_stop and l <= stop:
+                position = 0
+                has_stop = False
+            elif sig < 0:
+                position = -1
+                stop = c + atr_mult * a
+                has_stop = True
+
+        # --- SHORT ---
+        elif position == -1:
+            new_stop = c + atr_mult * a
+            if new_stop < stop:
+                stop = new_stop
+
+            if has_stop and h >= stop:
+                position = 0
+                has_stop = False
+            elif sig > 0:
+                position = 1
+                stop = c - atr_mult * a
+                has_stop = True
+
+        ts_signal[i] = position
+
+    return ts_signal
+
 @njit
 def apply_direction_filter_numba(
     raw_allocs: np.ndarray,

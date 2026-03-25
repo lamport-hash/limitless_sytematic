@@ -35,6 +35,8 @@
                 <div class="strategy-tabs">
                     <button class="tab-btn active" data-strategy="dual_momentum" onclick="selectStrategy('dual_momentum')">Dual Momentum</button>
                     <button class="tab-btn" data-strategy="cto_line" onclick="selectStrategy('cto_line')">CTO Line</button>
+                    <button class="tab-btn" data-strategy="static_alloc" onclick="selectStrategy('static_alloc')">Static Alloc</button>
+                    <button class="tab-btn" data-strategy="blend" onclick="selectStrategy('blend')">Blend</button>
                 </div>
                 
                 <input type="hidden" id="strategy-type" value="dual_momentum">
@@ -188,8 +190,91 @@
                     
                 </div>
                 
+                <div id="static-alloc-params" class="strategy-params">
+                    <h3 style="color: #4ecca3; font-size: 1rem; margin-bottom: 12px;">Asset Allocations (%)</h3>
+                    <p style="font-size: 0.8rem; color: #888; margin-bottom: 12px;">
+                        Set percentage for each asset. Must sum to 100%.
+                    </p>
+                    <div id="static-allocations-container" class="static-alloc-container">
+                        <p style="color: #888; text-align: center;">Select assets to configure allocations</p>
+                    </div>
+                    <div id="static-alloc-sum" style="margin-top: 12px; padding: 8px; background: rgba(78, 204, 163, 0.1); border-radius: 6px; font-size: 0.9rem;">
+                        Total: <span id="static-alloc-total">0</span>%
+                    </div>
+                    
+                    <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+                    
+                    <label for="static-rebalance-months">Rebalance Frequency (months):</label>
+                    <input type="number" id="static-rebalance-months" value="0" min="0" max="120">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                        0 = never rebalance, N = rebalance on 1st of every Nth month
+                    </p>
+                    
+                    <label for="static-transaction-cost">Transaction Cost (%):</label>
+                    <input type="number" id="static-transaction-cost" value="0.01" step="0.01" min="0" max="10">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                </div>
+                
+                <div id="blend-params" class="strategy-params">
+                    <h3 style="color: #4ecca3; font-size: 1rem; margin-bottom: 12px;">Strategy Configuration</h3>
+                    
+                    <div id="blend-strategies-container">
+                        <div class="blend-strategy-row" data-strategy-idx="0">
+                            <div class="blend-strategy-header">
+                                <select class="blend-strategy-type" onchange="onBlendStrategyTypeChange(0)">
+                                    <option value="dual_momentum">Dual Momentum</option>
+                                    <option value="cto_line">CTO Line</option>
+                                    <option value="static_alloc">Static Alloc</option>
+                                </select>
+                                <label class="blend-weight-label">Weight: <input type="number" class="blend-weight" value="50" min="0" max="100" step="1" onchange="validateBlendWeights()">%</label>
+                                <button class="btn-small blend-remove-btn" onclick="removeBlendStrategy(0)" style="display:none;">Remove</button>
+                            </div>
+                            <div class="blend-strategy-params" id="blend-params-0">
+                            </div>
+                        </div>
+                        <div class="blend-strategy-row" data-strategy-idx="1">
+                            <div class="blend-strategy-header">
+                                <select class="blend-strategy-type" onchange="onBlendStrategyTypeChange(1)">
+                                    <option value="dual_momentum">Dual Momentum</option>
+                                    <option value="cto_line" selected>CTO Line</option>
+                                    <option value="static_alloc">Static Alloc</option>
+                                </select>
+                                <label class="blend-weight-label">Weight: <input type="number" class="blend-weight" value="50" min="0" max="100" step="1" onchange="validateBlendWeights()">%</label>
+                                <button class="btn-small blend-remove-btn" onclick="removeBlendStrategy(1)" style="display:none;">Remove</button>
+                            </div>
+                            <div class="blend-strategy-params" id="blend-params-1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn-small" onclick="addBlendStrategy()" style="margin-top: 10px; background: rgba(78, 204, 163, 0.2); border-color: #4ecca3; color: #4ecca3;">+ Add Strategy</button>
+                    
+                    <div id="blend-weight-status" class="blend-weight-status" style="margin-top: 10px; font-size: 0.9rem;"></div>
+                    
+                    <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+                    
+                    <h3 style="color: #4ecca3; font-size: 1rem; margin-bottom: 12px;">Asset Selection per Strategy</h3>
+                    <p style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">Select which assets each strategy can trade. Check the boxes for each strategy column.</p>
+                    
+                    <div id="blend-asset-matrix-container" class="blend-asset-matrix">
+                        <p style="color: #888; text-align: center;">Select a file to see available assets</p>
+                    </div>
+                    
+                    <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+                    
+                    <label for="blend-transaction-cost">Transaction Cost (%):</label>
+                    <input type="number" id="blend-transaction-cost" value="0.01" step="0.01" min="0" max="10">
+                    <p style="font-size: 0.8rem; color: #888; margin-top: -10px; margin-bottom: 16px;">
+                </div>
+                
                 <button class="btn" id="run-btn" onclick="runBacktest()" disabled>
                     Run Backtest
+                </button>
+                <button class="btn btn-secondary" id="run-optim-btn" onclick="runOptimization()" disabled>
+                    Run Optim
+                </button>
+                <button class="btn" id="run-blend-btn" onclick="runBlendBacktest()" disabled style="display: none; background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);">
+                    Run Blend Backtest
                 </button>
             </div>
         </div>
@@ -199,7 +284,33 @@
             <p>Running backtest... This may take a moment.</p>
         </div>
         
+        <div id="optim-loading" class="loading card" style="display: none;">
+            <div class="spinner"></div>
+            <p>Running optimization... Testing 50 lookback periods. This may take several minutes.</p>
+        </div>
+        
         <div id="results" class="results">
+            <div class="card" style="text-align: center; margin-bottom: 20px;">
+                <h2 class="card-title" style="margin-bottom: 12px;">Save Experiment</h2>
+                <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+                    <input type="text" id="exp-name" placeholder="Experiment name (optional)" 
+                           style="width: 250px; margin-bottom: 0;">
+                    <button class="btn" id="save-exp-btn" onclick="saveExperiment()" style="width: auto; min-width: 150px;">
+                        Save Experiment
+                    </button>
+                </div>
+                <p style="font-size: 0.8rem; color: #888; margin-top: 8px;">Save current backtest results to database</p>
+            </div>
+            
+            <div id="optim-results" class="card" style="display: none;">
+                <h2 class="card-title">Optimization Results</h2>
+                <div id="optim-summary" class="metrics-grid" style="margin-bottom: 20px;"></div>
+                <div class="chart-container" style="max-width: 100%;">
+                    <p class="chart-title">CAGR & Max DD vs Lookback Period</p>
+                    <img id="chart-optim" src="" alt="Optimization Chart">
+                </div>
+            </div>
+            
             <div id="positions-card" class="card" style="display: none;">
                 <h2 class="card-title">Current Positions</h2>
                 <table class="asset-table">
@@ -323,6 +434,20 @@
                 <div id="allocations-loading" class="loading" style="display: none;">
                     <div class="spinner"></div>
                     <p>Loading allocations...</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2 class="card-title">Saved Experiments</h2>
+                <button class="btn" onclick="loadExperiments()" style="max-width: 150px; margin-bottom: 16px;">
+                    Refresh List
+                </button>
+                <div id="experiments-container">
+                    <p style="color: #888; text-align: center;">Click "Refresh List" to load saved experiments</p>
+                </div>
+                <div id="experiments-loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading experiments...</p>
                 </div>
             </div>
         </div>

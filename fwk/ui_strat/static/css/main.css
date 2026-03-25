@@ -268,3 +268,142 @@ select:focus, input:focus {
 .strategy-params.active {
     display: block;
 }
+.btn-secondary {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    margin-top: 10px;
+}
+.btn-secondary:hover {
+    box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3);
+}
+.btn-small {
+    padding: 6px 12px;
+    background: rgba(231, 76, 60, 0.3);
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+.btn-small:hover {
+    background: rgba(231, 76, 60, 0.5);
+}
+.blend-strategy-row {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.blend-strategy-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.blend-strategy-header select {
+    width: auto;
+    min-width: 150px;
+    margin-bottom: 0;
+}
+.blend-weight-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+.blend-weight-label input {
+    width: 60px;
+    margin-bottom: 0;
+    padding: 8px;
+}
+.blend-remove-btn {
+    margin-left: auto;
+}
+.blend-strategy-params {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.blend-param-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.blend-param-row label {
+    min-width: 120px;
+    margin-bottom: 0;
+    font-size: 0.85rem;
+}
+.blend-param-row input,
+.blend-param-row select {
+    width: auto;
+    min-width: 100px;
+    margin-bottom: 0;
+    padding: 8px;
+}
+.blend-weight-status {
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.2);
+}
+.blend-asset-matrix {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+}
+.blend-asset-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.blend-asset-matrix-table th,
+.blend-asset-matrix-table td {
+    padding: 8px 12px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.blend-asset-matrix-table th {
+    color: #4ecca3;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.blend-asset-matrix-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+}
+.blend-asset-matrix-table input[type="checkbox"] {
+    width: auto;
+    margin-bottom: 0;
+    accent-color: #9b59b6;
+}
+.blend-asset-matrix-table tr:hover {
+    background: rgba(155, 89, 182, 0.1);
+}
+.static-alloc-container {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+}
+.static-alloc-grid {
+    display: grid;
+    gap: 10px;
+}
+.static-alloc-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.static-alloc-row label {
+    min-width: 80px;
+    margin-bottom: 0;
+    font-weight: 500;
+}
+.static-alloc-row input {
+    width: 100px;
+    margin-bottom: 0;
+}

@@ -16,6 +16,8 @@ pandas-ta
 backtesting
 yfinance
 ruamel.yaml
+ta
+
 
 # Dev dependencies
 pytest

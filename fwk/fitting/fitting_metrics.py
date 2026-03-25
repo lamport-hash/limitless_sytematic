@@ -89,7 +89,7 @@ class RegressionMetric(MetricCalculator):
         ss_res = np.sum((y_true - y_pred) ** 2)
         ss_tot = np.sum((y_true - y_mean) ** 2)
         r2_val = float(1 - (ss_res / (ss_tot + 1e-8)))
-        results[MetricType.R2.value] = max(0.0, min(1.0, r2_val))  # Clamp to [0,1]
+        results[MetricType.R2.value] = r2_val
 
         # Compute baseline (null model) for score normalization
         baseline_mse = float(np.mean((y_true - y_mean) ** 2))

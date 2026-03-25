@@ -9,8 +9,10 @@ services:
       - ../data:/app/data:ro
       - ./static/charts:/app/ui_strat/static/charts
       - ./templates:/app/ui_strat/templates
+      - ./experiments:/app/experiments
     environment:
       - BUNDLE_DIR=/app/data/bundle
+      - EXPERIMENTS_DIR=/app/experiments
       - PYTHONPATH=/app
     restart: unless-stopped
     healthcheck:

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from ui_data.routes import assets, bundle
+from ui_data.routes import assets, bundle, seasonality
 
 app = FastAPI(
     title="Data Bundle Creator",
@@ -30,6 +30,7 @@ if static_dir.exists():
 
 app.include_router(assets.router)
 app.include_router(bundle.router)
+app.include_router(seasonality.router)
 
 
 @app.get("/", response_class=HTMLResponse)

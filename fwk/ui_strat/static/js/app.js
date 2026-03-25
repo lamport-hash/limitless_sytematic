@@ -1,6 +1,15 @@
 let availableAssets = [];
 let currentRunId = null;
 let currentStrategy = 'dual_momentum';
+let currentMetrics = null;
+let currentParams = null;
+let currentFilename = null;
+let currentSelectedAssets = [];
+let blendStrategies = [
+    { type: 'dual_momentum', weight: 50, assets: [] },
+    { type: 'cto_line', weight: 50, assets: [] }
+];
+let blendStrategyCounter = 2;
 
 function selectStrategy(strategy) {
     currentStrategy = strategy;
@@ -14,10 +23,499 @@ function selectStrategy(strategy) {
         panel.classList.remove('active');
     });
     
+    const runBtn = document.getElementById('run-btn');
+    const runOptimBtn = document.getElementById('run-optim-btn');
+    const runBlendBtn = document.getElementById('run-blend-btn');
+    
     if (strategy === 'dual_momentum') {
         document.getElementById('dual-momentum-params').classList.add('active');
+        runBtn.style.display = 'block';
+        runOptimBtn.style.display = 'block';
+        runBlendBtn.style.display = 'none';
     } else if (strategy === 'cto_line') {
         document.getElementById('cto-line-params').classList.add('active');
+        runBtn.style.display = 'block';
+        runOptimBtn.style.display = 'block';
+        runBlendBtn.style.display = 'none';
+    } else if (strategy === 'static_alloc') {
+        document.getElementById('static-alloc-params').classList.add('active');
+        runBtn.style.display = 'block';
+        runOptimBtn.style.display = 'none';
+        runBlendBtn.style.display = 'none';
+        updateStaticAllocInputs();
+    } else if (strategy === 'blend') {
+        document.getElementById('blend-params').classList.add('active');
+        runBtn.style.display = 'none';
+        runOptimBtn.style.display = 'none';
+        runBlendBtn.style.display = 'block';
+        renderBlendAssetMatrix();
+        validateBlendWeights();
+    }
+}
+
+function getBlendStrategyParamsHTML(type, idx) {
+    if (type === 'dual_momentum') {
+        return `
+            <div class="blend-param-row">
+                <label>Lookback:</label>
+                <input type="number" class="blend-param-lookback" value="3500" min="100" max="10000">
+            </div>
+            <div class="blend-param-row">
+                <label>Default Asset:</label>
+                <select class="blend-param-default-asset"></select>
+            </div>
+            <div class="blend-param-row">
+                <label>Top N:</label>
+                <input type="number" class="blend-param-top-n" value="2" min="1" max="10">
+            </div>
+            <div class="blend-param-row">
+                <label>Abs Momentum Thresh:</label>
+                <input type="number" class="blend-param-abs-momentum" value="0" step="0.01">
+            </div>
+            <div class="blend-param-row">
+                <label>Min Holding:</label>
+                <input type="number" class="blend-param-min-holding" value="240" min="0">
+            </div>
+            <div class="blend-param-row">
+                <label>Switch Thresh %:</label>
+                <input type="number" class="blend-param-switch-thresh" value="0" step="0.01">
+            </div>
+        `;
+    } else if (type === 'cto_line') {
+        return `
+            <div class="blend-param-row">
+                <label>V1/M1/M2/V2:</label>
+                <input type="text" class="blend-param-cto-params" value="15,19,25,29" style="width: 120px;">
+            </div>
+            <div class="blend-param-row">
+                <label>Direction:</label>
+                <select class="blend-param-direction">
+                    <option value="long">Long Only</option>
+                    <option value="short">Short Only</option>
+                    <option value="both" selected>Both</option>
+                </select>
+            </div>
+            <div class="blend-param-row">
+                <label>Default Asset:</label>
+                <select class="blend-param-default-asset"></select>
+            </div>
+            <div class="blend-param-row">
+                <label>Min Holding:</label>
+                <input type="number" class="blend-param-min-holding" value="240" min="0">
+            </div>
+            <div class="blend-param-row">
+                <label>Switch Thresh %:</label>
+                <input type="number" class="blend-param-switch-thresh" value="0" step="0.01">
+            </div>
+        `;
+    } else if (type === 'static_alloc') {
+        return `
+            <div class="blend-param-row">
+                <label>Allocations (asset:pct,...):</label>
+                <input type="text" class="blend-param-allocations" placeholder="QQQ:50,TLT:30,GLD:20" style="width: 150px;">
+            </div>
+            <div class="blend-param-row">
+                <label>Rebalance Months:</label>
+                <input type="number" class="blend-param-rebalance-months" value="0" min="0" max="120">
+            </div>
+        `;
+    }
+    return '';
+}
+
+function updateStaticAllocInputs() {
+    const container = document.getElementById('static-allocations-container');
+    const selectedAssets = getSelectedAssets();
+    
+    if (selectedAssets.length === 0) {
+        container.innerHTML = '<p style="color: #888; text-align: center;">Select assets to configure allocations</p>';
+        updateStaticAllocSum();
+        return;
+    }
+    
+    const defaultPct = (100 / selectedAssets.length).toFixed(1);
+    
+    let html = '<div class="static-alloc-grid">';
+    selectedAssets.forEach(asset => {
+        html += `
+            <div class="static-alloc-row">
+                <label>${asset}:</label>
+                <input type="number" 
+                       id="static-alloc-${asset}" 
+                       class="static-alloc-input" 
+                       data-asset="${asset}"
+                       value="${defaultPct}" 
+                       min="0" 
+                       max="100" 
+                       step="0.1"
+                       onchange="updateStaticAllocSum()">
+%
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    updateStaticAllocSum();
+}
+
+function updateStaticAllocSum() {
+    const inputs = document.querySelectorAll('.static-alloc-input');
+    let total = 0;
+    inputs.forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+    
+    const totalSpan = document.getElementById('static-alloc-total');
+    totalSpan.textContent = total.toFixed(1);
+    
+    const sumDiv = document.getElementById('static-alloc-sum');
+    if (Math.abs(total - 100) < 0.1) {
+        sumDiv.style.background = 'rgba(78, 204, 163, 0.2)';
+        sumDiv.style.color = '#4ecca3';
+    } else {
+        sumDiv.style.background = 'rgba(231, 76, 60, 0.2)';
+        sumDiv.style.color = '#e74c3c';
+    }
+}
+
+function getStaticAllocations() {
+    const inputs = document.querySelectorAll('.static-alloc-input');
+    const allocations = {};
+    inputs.forEach(input => {
+        const asset = input.dataset.asset;
+        const value = parseFloat(input.value) || 0;
+        if (value > 0) {
+            allocations[asset] = value;
+        }
+    });
+    return allocations;
+}
+
+function onBlendStrategyTypeChange(idx) {
+    const row = document.querySelector(`.blend-strategy-row[data-strategy-idx="${idx}"]`);
+    if (!row) return;
+    
+    const typeSelect = row.querySelector('.blend-strategy-type');
+    const type = typeSelect.value;
+    
+    blendStrategies[idx].type = type;
+    
+    const paramsDiv = row.querySelector('.blend-strategy-params');
+    paramsDiv.innerHTML = getBlendStrategyParamsHTML(type, idx);
+    
+    populateBlendDefaultAssetDropdowns();
+    renderBlendAssetMatrix();
+    validateBlendWeights();
+}
+
+function addBlendStrategy() {
+    const idx = blendStrategyCounter++;
+    const container = document.getElementById('blend-strategies-container');
+    
+    const newRow = document.createElement('div');
+    newRow.className = 'blend-strategy-row';
+    newRow.dataset.strategyIdx = idx;
+    newRow.innerHTML = `
+        <div class="blend-strategy-header">
+            <select class="blend-strategy-type" onchange="onBlendStrategyTypeChange(${idx})">
+                <option value="dual_momentum">Dual Momentum</option>
+                <option value="cto_line">CTO Line</option>
+                <option value="static_alloc">Static Alloc</option>
+            </select>
+            <label class="blend-weight-label">Weight: <input type="number" class="blend-weight" value="0" min="0" max="100" step="1" onchange="validateBlendWeights()">%</label>
+            <button class="btn-small blend-remove-btn" onclick="removeBlendStrategy(${idx})">Remove</button>
+        </div>
+        <div class="blend-strategy-params" id="blend-params-${idx}">
+        </div>
+    `;
+    container.appendChild(newRow);
+    
+    blendStrategies.push({ type: 'dual_momentum', weight: 0, assets: [] });
+    
+    onBlendStrategyTypeChange(idx);
+    updateBlendRemoveButtons();
+    validateBlendWeights();
+}
+
+function removeBlendStrategy(idx) {
+    const row = document.querySelector(`.blend-strategy-row[data-strategy-idx="${idx}"]`);
+    if (row) {
+        row.remove();
+    }
+    
+    blendStrategies = blendStrategies.filter((s, i) => {
+        const rowI = document.querySelector(`.blend-strategy-row[data-strategy-idx="${i}"]`);
+        return rowI !== null;
+    });
+    
+    updateBlendRemoveButtons();
+    renderBlendAssetMatrix();
+    validateBlendWeights();
+}
+
+function updateBlendRemoveButtons() {
+    const rows = document.querySelectorAll('.blend-strategy-row');
+    rows.forEach(row => {
+        const btn = row.querySelector('.blend-remove-btn');
+        btn.style.display = rows.length > 2 ? 'inline-block' : 'none';
+    });
+}
+
+function validateBlendWeights() {
+    const rows = document.querySelectorAll('.blend-strategy-row');
+    let total = 0;
+    let issues = [];
+    
+    if (!currentFilename) {
+        issues.push('Select a data file');
+    }
+    
+    rows.forEach((row, i) => {
+        const weightInput = row.querySelector('.blend-weight');
+        const weight = parseFloat(weightInput.value) || 0;
+        total += weight;
+        
+        const idx = parseInt(row.dataset.strategyIdx);
+        if (blendStrategies[idx] !== undefined) {
+            blendStrategies[idx].weight = weight;
+        }
+    });
+    
+    if (Math.abs(total - 100) > 0.01) {
+        issues.push(`Weights sum to ${total.toFixed(1)}% (need 100%)`);
+    }
+    
+    rows.forEach((row, i) => {
+        const idx = parseInt(row.dataset.strategyIdx);
+        const checkboxes = document.querySelectorAll(`.blend-asset-checkbox[data-strategy-idx="${idx}"]:checked`);
+        const typeSelect = row.querySelector('.blend-strategy-type');
+        const type = typeSelect ? typeSelect.value : 'unknown';
+        if (checkboxes.length === 0) {
+            issues.push(`"${type === 'dual_momentum' ? 'Dual Momentum' : 'CTO Line'}" has no assets selected`);
+        }
+    });
+    
+    const statusEl = document.getElementById('blend-weight-status');
+    const runBtn = document.getElementById('run-blend-btn');
+    
+    if (issues.length === 0) {
+        statusEl.innerHTML = `<span style="color: #4ecca3;">Total: ${total.toFixed(1)}% ✓ - Ready to run</span>`;
+        runBtn.disabled = false;
+    } else {
+        statusEl.innerHTML = `<span style="color: #e74c3c;">Missing: ${issues.join(' | ')}</span>`;
+        runBtn.disabled = true;
+    }
+}
+
+function populateBlendDefaultAssetDropdowns() {
+    const rows = document.querySelectorAll('.blend-strategy-row');
+    rows.forEach(row => {
+        const select = row.querySelector('.blend-param-default-asset');
+        if (!select) return;
+        
+        select.innerHTML = '';
+        availableAssets.forEach(asset => {
+            const option = document.createElement('option');
+            option.value = asset;
+            option.textContent = asset;
+            select.appendChild(option);
+        });
+        
+        if (availableAssets.includes('SHV')) {
+            select.value = 'SHV';
+        } else if (availableAssets.includes('TLT')) {
+            select.value = 'TLT';
+        } else if (availableAssets.length > 0) {
+            select.value = availableAssets[0];
+        }
+    });
+}
+
+function renderBlendAssetMatrix() {
+    const container = document.getElementById('blend-asset-matrix-container');
+    
+    if (availableAssets.length === 0) {
+        container.innerHTML = '<p style="color: #888; text-align: center;">Select a file to see available assets</p>';
+        return;
+    }
+    
+    const rows = document.querySelectorAll('.blend-strategy-row');
+    const strategyLabels = [];
+    rows.forEach((row, i) => {
+        const typeSelect = row.querySelector('.blend-strategy-type');
+        const weightInput = row.querySelector('.blend-weight');
+        const type = typeSelect ? typeSelect.value : 'dual_momentum';
+        const weight = weightInput ? weightInput.value : '0';
+        strategyLabels.push({ type, weight, idx: parseInt(row.dataset.strategyIdx) });
+    });
+    
+    let html = '<table class="blend-asset-matrix-table"><thead><tr><th>Asset</th>';
+    strategyLabels.forEach((s, i) => {
+        html += `<th>${s.type === 'dual_momentum' ? 'Dual Mom' : 'CTO Line'}<br>(${s.weight}%)</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    availableAssets.forEach(asset => {
+        html += `<tr><td>${asset}</td>`;
+        strategyLabels.forEach((s, i) => {
+            const isChecked = blendStrategies[s.idx] && blendStrategies[s.idx].assets.includes(asset);
+            html += `<td><input type="checkbox" class="blend-asset-checkbox" data-asset="${asset}" data-strategy-idx="${s.idx}" ${isChecked ? 'checked' : ''} onchange="onBlendAssetChange()"></td>`;
+        });
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    
+    html += `<div style="margin-top: 10px;">
+        <button class="select-all-btn" onclick="selectAllBlendAssets(true)">Select All for All</button>
+        <button class="select-all-btn" onclick="selectAllBlendAssets(false)">Deselect All</button>
+    </div>`;
+    
+    container.innerHTML = html;
+    
+    validateBlendWeights();
+}
+
+function onBlendAssetChange() {
+    const checkboxes = document.querySelectorAll('.blend-asset-checkbox');
+    
+    checkboxes.forEach(cb => {
+        const asset = cb.dataset.asset;
+        const idx = parseInt(cb.dataset.strategyIdx);
+        
+        if (!blendStrategies[idx]) {
+            blendStrategies[idx] = { type: 'dual_momentum', weight: 0, assets: [] };
+        }
+        
+        if (cb.checked) {
+            if (!blendStrategies[idx].assets.includes(asset)) {
+                blendStrategies[idx].assets.push(asset);
+            }
+        } else {
+            blendStrategies[idx].assets = blendStrategies[idx].assets.filter(a => a !== asset);
+        }
+    });
+    
+    validateBlendWeights();
+}
+
+function selectAllBlendAssets(selected) {
+    const checkboxes = document.querySelectorAll('.blend-asset-checkbox');
+    checkboxes.forEach(cb => cb.checked = selected);
+    onBlendAssetChange();
+}
+
+function buildBlendRequestBody() {
+    const rows = document.querySelectorAll('.blend-strategy-row');
+    const strategies = [];
+    
+    rows.forEach(row => {
+        const idx = parseInt(row.dataset.strategyIdx);
+        const typeSelect = row.querySelector('.blend-strategy-type');
+        const weightInput = row.querySelector('.blend-weight');
+        
+        const type = typeSelect.value;
+        const weight = parseFloat(weightInput.value) || 0;
+        
+        let assets = [];
+        const checkboxes = document.querySelectorAll(`.blend-asset-checkbox[data-strategy-idx="${idx}"]:checked`);
+        checkboxes.forEach(cb => assets.push(cb.dataset.asset));
+        
+        const params = {};
+        
+        if (type === 'dual_momentum') {
+            params.lookback = parseInt(row.querySelector('.blend-param-lookback')?.value || 3500);
+            params.default_asset = row.querySelector('.blend-param-default-asset')?.value;
+            params.top_n = parseInt(row.querySelector('.blend-param-top-n')?.value || 2);
+            params.abs_momentum_threshold = parseFloat(row.querySelector('.blend-param-abs-momentum')?.value || 0);
+            params.min_holding_periods = parseInt(row.querySelector('.blend-param-min-holding')?.value || 240);
+            params.switch_threshold_pct = parseFloat(row.querySelector('.blend-param-switch-thresh')?.value || 0);
+        } else if (type === 'cto_line') {
+            const ctoParamsStr = row.querySelector('.blend-param-cto-params')?.value || '15,19,25,29';
+            params.cto_params = ctoParamsStr.split(',').map(s => parseInt(s.trim()));
+            params.direction = row.querySelector('.blend-param-direction')?.value || 'both';
+            params.default_asset = row.querySelector('.blend-param-default-asset')?.value;
+            params.min_holding_periods = parseInt(row.querySelector('.blend-param-min-holding')?.value || 240);
+            params.switch_threshold_pct = parseFloat(row.querySelector('.blend-param-switch-thresh')?.value || 0);
+        } else if (type === 'static_alloc') {
+            const allocStr = row.querySelector('.blend-param-allocations')?.value || '';
+            const allocations = {};
+            if (allocStr) {
+                allocStr.split(',').forEach(pair => {
+                    const [asset, pct] = pair.split(':').map(s => s.trim());
+                    if (asset && pct) {
+                        allocations[asset] = parseFloat(pct);
+                    }
+                });
+            }
+            params.allocations = allocations;
+            params.rebalance_months = parseInt(row.querySelector('.blend-param-rebalance-months')?.value || 0);
+        }
+        
+        strategies.push({
+            strategy_type: type,
+            weight: weight,
+            assets: assets,
+            params: params
+        });
+    });
+    
+    return {
+        filename: currentFilename,
+        strategies: strategies,
+        transaction_cost_pct: parseFloat(document.getElementById('blend-transaction-cost').value)
+    };
+}
+
+async function runBlendBacktest() {
+    hideError();
+    
+    if (!currentFilename) {
+        showError('Please select a file first');
+        return;
+    }
+    
+    const requestBody = buildBlendRequestBody();
+    
+    for (const s of requestBody.strategies) {
+        if (s.assets.length === 0) {
+            showError(`Strategy "${s.strategy_type}" has no assets selected`);
+            return;
+        }
+    }
+    
+    currentSelectedAssets = [...new Set(requestBody.strategies.flatMap(s => s.assets))];
+    currentParams = { strategies: requestBody.strategies };
+    
+    document.getElementById('loading').classList.add('active');
+    document.getElementById('results').classList.remove('active');
+    document.getElementById('run-blend-btn').disabled = true;
+    
+    try {
+        const response = await fetch('/api/run-blend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Blend backtest failed');
+        }
+        
+        currentMetrics = data.metrics;
+        currentMetrics.orders_count = data.orders_count;
+        
+        displayResults(data);
+    } catch (err) {
+        showError('Blend backtest failed: ' + err.message);
+    } finally {
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('run-blend-btn').disabled = false;
     }
 }
 
@@ -51,10 +549,14 @@ async function onFileSelect() {
     const container = document.getElementById('assets-container');
     const fileInfo = document.getElementById('file-info');
     
+    currentFilename = filename || null;
+    
     if (!filename) {
         container.innerHTML = '<p style="color: #888; text-align: center;">Select a file to see available assets</p>';
         fileInfo.textContent = '';
         document.getElementById('run-btn').disabled = true;
+        currentFilename = null;
+        validateBlendWeights();
         return;
     }
     
@@ -72,12 +574,17 @@ async function onFileSelect() {
         
         container.innerHTML = availableAssets.map((asset, idx) => `
             <div class="asset-item">
-                <input type="checkbox" id="asset-${idx}" value="${asset}" checked>
+                <input type="checkbox" id="asset-${idx}" value="${asset}" checked onchange="onAssetCheckboxChange()">
                 <label for="asset-${idx}">${asset}</label>
             </div>
         `).join('');
         
+        currentFilename = filename;
+        
         populateDefaultAssetDropdown(availableAssets);
+        populateBlendDefaultAssetDropdowns();
+        renderBlendAssetMatrix();
+        updateStaticAllocInputs();
         updateRunButton();
     } catch (err) {
         showError('Failed to load assets: ' + err.message);
@@ -114,7 +621,12 @@ function populateDefaultAssetDropdown(assets) {
 function selectAllAssets(selected) {
     const checkboxes = document.querySelectorAll('#assets-container input[type="checkbox"]');
     checkboxes.forEach(cb => cb.checked = selected);
+    onAssetCheckboxChange();
+}
+
+function onAssetCheckboxChange() {
     updateRunButton();
+    updateStaticAllocInputs();
 }
 
 function getSelectedAssets() {
@@ -125,7 +637,9 @@ function getSelectedAssets() {
 function updateRunButton() {
     const filename = document.getElementById('file-select').value;
     const selected = getSelectedAssets();
-    document.getElementById('run-btn').disabled = !filename || selected.length === 0;
+    const disabled = !filename || selected.length === 0;
+    document.getElementById('run-btn').disabled = disabled;
+    document.getElementById('run-optim-btn').disabled = disabled;
 }
 
 async function runBacktest() {
@@ -140,17 +654,24 @@ async function runBacktest() {
         return;
     }
     
+    currentFilename = filename;
+    currentSelectedAssets = selectedAssets;
+    
     document.getElementById('loading').classList.add('active');
     document.getElementById('results').classList.remove('active');
     document.getElementById('run-btn').disabled = true;
+    document.getElementById('run-optim-btn').disabled = true;
     
     try {
+        const requestBody = buildRequestBody(filename, selectedAssets, strategyType);
+        currentParams = extractParams(requestBody);
+        
         const response = await fetch('/api/run-backtest', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(buildRequestBody(filename, selectedAssets, strategyType))
+            body: JSON.stringify(requestBody)
         });
         
         const data = await response.json();
@@ -159,12 +680,16 @@ async function runBacktest() {
             throw new Error(data.detail || 'Backtest failed');
         }
         
+        currentMetrics = data.metrics;
+        currentMetrics.orders_count = data.orders_count;
+        
         displayResults(data);
     } catch (err) {
         showError('Backtest failed: ' + err.message);
     } finally {
         document.getElementById('loading').classList.remove('active');
         document.getElementById('run-btn').disabled = false;
+        document.getElementById('run-optim-btn').disabled = false;
     }
 }
 
@@ -208,6 +733,13 @@ function buildRequestBody(filename, selectedAssets, strategyType) {
             top_n: parseInt(document.getElementById('cto-top-n').value),
             abs_momentum_threshold: parseFloat(document.getElementById('cto-abs-momentum-threshold').value)
         };
+    } else if (strategyType === 'static_alloc') {
+        return {
+            ...base,
+            allocations: getStaticAllocations(),
+            rebalance_months: parseInt(document.getElementById('static-rebalance-months').value),
+            transaction_cost_pct: parseFloat(document.getElementById('static-transaction-cost').value)
+        };
     }
     return base;
 }
@@ -234,6 +766,14 @@ function displayResults(data) {
         <div class="metric-card">
             <div class="metric-label">Sharpe Ratio</div>
             <div class="metric-value">${metrics.sharpe_ratio.toFixed(2)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Profit Factor</div>
+            <div class="metric-value">${metrics.profit_factor.toFixed(2)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Longest Underwater</div>
+            <div class="metric-value">${metrics.longest_underwater_days} days</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Calmar Ratio</div>
@@ -506,6 +1046,265 @@ function showError(message) {
 
 function hideError() {
     document.getElementById('error').classList.remove('active');
+}
+
+function extractParams(requestBody) {
+    const params = {};
+    const paramKeys = ['lookback', 'default_asset', 'top_n', 'abs_momentum_threshold', 
+                       'transaction_cost_pct', 'min_holding_periods', 'switch_threshold_pct',
+                       'rsi_period', 'use_rsi_entry_filter', 'rsi_entry_max',
+                       'use_rsi_entry_queue', 'use_rsi_diff_filter', 'rsi_diff_threshold',
+                       'cto_params', 'direction', 'cap_to_half_assets'];
+    paramKeys.forEach(key => {
+        if (requestBody[key] !== undefined) {
+            params[key] = requestBody[key];
+        }
+    });
+    return params;
+}
+
+async function runOptimization() {
+    hideError();
+    
+    const filename = document.getElementById('file-select').value;
+    const selectedAssets = getSelectedAssets();
+    
+    if (!filename || selectedAssets.length === 0) {
+        showError('Please select a file and at least one asset');
+        return;
+    }
+    
+    const defaultAsset = document.getElementById('default-asset').value;
+    if (!defaultAsset) {
+        showError('Please select a default asset');
+        return;
+    }
+    
+    document.getElementById('optim-loading').style.display = 'block';
+    document.getElementById('optim-results').style.display = 'none';
+    document.getElementById('run-optim-btn').disabled = true;
+    document.getElementById('run-btn').disabled = true;
+    
+    try {
+        const response = await fetch('/api/run-optim', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filename: filename,
+                selected_assets: selectedAssets,
+                default_asset: defaultAsset,
+                top_n: parseInt(document.getElementById('top-n').value),
+                abs_momentum_threshold: parseFloat(document.getElementById('abs-momentum-threshold').value),
+                transaction_cost_pct: parseFloat(document.getElementById('transaction-cost').value),
+                min_holding_periods: parseInt(document.getElementById('min-holding-periods').value),
+                switch_threshold_pct: parseFloat(document.getElementById('switch-threshold').value),
+                lookback_min: 100,
+                lookback_max: 10000,
+                num_steps: 50
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Optimization failed');
+        }
+        
+        displayOptimResults(data);
+    } catch (err) {
+        showError('Optimization failed: ' + err.message);
+    } finally {
+        document.getElementById('optim-loading').style.display = 'none';
+        document.getElementById('run-optim-btn').disabled = false;
+        document.getElementById('run-btn').disabled = false;
+    }
+}
+
+function displayOptimResults(data) {
+    const optimSection = document.getElementById('optim-results');
+    const summaryDiv = document.getElementById('optim-summary');
+    
+    let summaryHtml = '';
+    
+    if (data.best_by_cagr) {
+        summaryHtml += `
+            <div class="metric-card">
+                <div class="metric-label">Best CAGR</div>
+                <div class="metric-value positive">${data.best_by_cagr.cagr}%</div>
+                <div style="font-size: 0.8rem; color: #888;">Lookback: ${data.best_by_cagr.lookback}</div>
+            </div>
+        `;
+    }
+    
+    if (data.best_by_sharpe) {
+        summaryHtml += `
+            <div class="metric-card">
+                <div class="metric-label">Best Sharpe-like</div>
+                <div class="metric-value">${data.best_by_sharpe.cagr}%</div>
+                <div style="font-size: 0.8rem; color: #888;">Lookback: ${data.best_by_sharpe.lookback}</div>
+            </div>
+        `;
+    }
+    
+    summaryHtml += `
+        <div class="metric-card">
+            <div class="metric-label">Lookback Range</div>
+            <div class="metric-value" style="font-size: 1rem;">${data.lookback_range[0]} - ${data.lookback_range[1]}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Points Tested</div>
+            <div class="metric-value">${data.num_steps}</div>
+        </div>
+    `;
+    
+    summaryDiv.innerHTML = summaryHtml;
+    
+    if (data.chart) {
+        const timestamp = Date.now();
+        document.getElementById('chart-optim').src = `/static/charts/${data.chart}?t=${timestamp}`;
+    }
+    
+    optimSection.style.display = 'block';
+}
+
+async function saveExperiment() {
+    if (!currentMetrics || !currentParams) {
+        showError('No backtest results to save. Run a backtest first.');
+        return;
+    }
+    
+    const name = document.getElementById('exp-name').value.trim() || null;
+    
+    try {
+        const response = await fetch('/api/save-experiment', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name,
+                filename: currentFilename,
+                strategy_type: currentStrategy,
+                params: currentParams,
+                metrics: currentMetrics,
+                selected_assets: currentSelectedAssets
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Failed to save experiment');
+        }
+        
+        document.getElementById('exp-name').value = '';
+        alert('Experiment saved successfully! ID: ' + data.id);
+        loadExperiments();
+    } catch (err) {
+        showError('Failed to save experiment: ' + err.message);
+    }
+}
+
+async function loadExperiments() {
+    const container = document.getElementById('experiments-container');
+    const loading = document.getElementById('experiments-loading');
+    
+    loading.style.display = 'block';
+    container.innerHTML = '';
+    
+    try {
+        const response = await fetch('/api/experiments');
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Failed to load experiments');
+        }
+        
+        displayExperiments(data.experiments);
+    } catch (err) {
+        container.innerHTML = `<p style="color: #e74c3c; text-align: center;">Error: ${err.message}</p>`;
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function displayExperiments(experiments) {
+    const container = document.getElementById('experiments-container');
+    
+    if (!experiments || experiments.length === 0) {
+        container.innerHTML = '<p style="color: #888; text-align: center;">No experiments saved yet.</p>';
+        return;
+    }
+    
+    let tableHtml = `
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="asset-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>File</th>
+                        <th>Strategy</th>
+                        <th>CAGR</th>
+                        <th>Max DD</th>
+                        <th>Lookback</th>
+                        <th>Top N</th>
+                        <th>Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    experiments.forEach(exp => {
+        const cagrClass = (exp.cagr || 0) >= 0 ? 'positive' : 'negative';
+        const displayName = exp.name || '-';
+        const shortFile = exp.filename.length > 15 ? exp.filename.substring(0, 15) + '...' : exp.filename;
+        
+        tableHtml += `
+            <tr>
+                <td>${exp.id}</td>
+                <td style="font-size: 0.8rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis;" title="${exp.name || ''}">${displayName}</td>
+                <td style="font-size: 0.8rem;" title="${exp.filename}">${shortFile}</td>
+                <td>${exp.strategy_type}</td>
+                <td class="${cagrClass}">${exp.cagr ? exp.cagr.toFixed(2) + '%' : '-'}</td>
+                <td class="negative">${exp.max_dd ? exp.max_dd.toFixed(2) + '%' : '-'}</td>
+                <td>${exp.lookback || '-'}</td>
+                <td>${exp.top_n || '-'}</td>
+                <td style="font-size: 0.75rem;">${exp.created_at ? exp.created_at.substring(0, 10) : '-'}</td>
+                <td>
+                    <button class="btn-small" onclick="deleteExperiment(${exp.id})" style="padding: 4px 8px; font-size: 0.75rem;">Delete</button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tableHtml += '</tbody></table></div>';
+    container.innerHTML = tableHtml;
+}
+
+async function deleteExperiment(expId) {
+    if (!confirm('Are you sure you want to delete experiment #' + expId + '?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/experiments/${expId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.detail || 'Failed to delete experiment');
+        }
+        
+        loadExperiments();
+    } catch (err) {
+        showError('Failed to delete experiment: ' + err.message);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', loadFiles);

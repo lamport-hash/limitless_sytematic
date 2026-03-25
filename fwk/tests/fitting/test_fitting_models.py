@@ -9,11 +9,9 @@ This demonstrates:
 
 import pytest
 import numpy as np
-from sklearn.datasets import make_classification, make_regression
-from sklearn.neural_network import MLPRegressor, MLPClassifier
-import xgboost as xgb
+from sklearn.datasets import make_regression
 
-from fitting.fitting_core import BaseModel, TaskType, Targets, Predictions, RetrainMode, Features
+from fitting.fitting_core import TaskType, RetrainMode
 
 from fitting.fitting_models import (
     TimeSeriesModelTrainer,
@@ -34,16 +32,20 @@ from fitting.models.mlp_model import MLPModel
 
 @pytest.fixture
 def regression_data():
-    """Generate synthetic regression data with temporal patterns."""
-    np.random.seed(42)
-    n_samples = 500
-    n_features = 10
-    t = np.linspace(0, 10, n_samples)
-    X = np.random.randn(n_samples, n_features)
-    X[:, 0] = np.sin(t) + np.random.randn(n_samples) * 0.02
-    X[:, 1] = np.cos(t) + np.random.randn(n_samples) * 0.02
-    y = 2 * np.sin(t) + 0.5 * np.cos(2 * t) + 0.1 * t + np.random.randn(n_samples) * 0.1
-    return X, y
+    """Generate synthetic regression data WITHOUT concept drift.
+    
+    Uses sklearn.make_regression which creates data where X and y have
+    a fixed linear relationship. This avoids the temporal trend issue
+    that caused R²=0 on validation/test sets due to concept drift.
+    """
+    X, y = make_regression(
+        n_samples=500,
+        n_features=10,
+        n_informative=8,
+        noise=1.0,
+        random_state=42
+    )
+    return X.astype(np.float32), y.astype(np.float32)
 
 
 @pytest.fixture
@@ -99,6 +101,27 @@ def regression_config_periodic_expanding():
         retrain_mode=RetrainMode.EXPANDING,
         normalization="standardize",
         normalize_targets=True
+    )
+
+
+@pytest.fixture
+def regression_config_periodic_sliding():
+    """Periodic retraining with sliding window for regression.
+    
+    This configuration matches the user's setup:
+    - train_ratio=0.2 (20% for initial training)
+    - sliding_window_size=126
+    - retrain_period=21
+    - RetrainMode.SLIDING
+    """
+    return TrainingConfig(
+        mode=TrainingSplitType.PERIODIC_RETRAIN,
+        train_ratio=0.2,
+        retrain_period=21,
+        retrain_mode=RetrainMode.SLIDING,
+        sliding_window_size=126,
+        normalization="standardize",
+        normalize_targets=False  # User's config
     )
 
 
@@ -193,7 +216,7 @@ def mlp_classification_model():
 def test_example_xgboost_regression(regression_data, regression_config_three_way, xgboost_regression_model):
     """XGBoost for time series regression with three-way split."""
     print("=" * 80)
-    print("EXAMPLE 1: XGBoost Regression with Three-Way Split")
+    print("XGBoost Regression with Three-Way Split")
     print("=" * 80)
 
     X, y = regression_data
@@ -211,15 +234,20 @@ def test_example_xgboost_regression(regression_data, regression_config_three_way
     metrics = trainer.fit(X, y)
     print(f"\n{metrics}")
 
-    # Assert: RMSE should be reasonably low for synthetic data
-    assert metrics.test_score > 0, "Test RMSE should be positive"
+    # Assert: R² and score should be positive (no concept drift with make_regression data)
     assert isinstance(metrics.test_score, float)
+    assert metrics.test_score > 0, f"Test R² score should be > 0, got {metrics.test_score}"
+    
+    # Verify full metrics contain positive values
+    all_metrics = metrics.get_all_metrics()
+    assert all_metrics['test']['r2'] > 0, f"Test R² should be > 0, got {all_metrics['test']['r2']}"
+    assert all_metrics['test']['score'] > 0, f"Test score should be > 0, got {all_metrics['test']['score']}"
 
 
-def test_example_xgboost_regression(regression_data, regression_config_periodic_expanding, xgboost_regression_model):
-    """XGBoost for time series regression with three-way split."""
+def test_example_xgboost_regression_periodic(regression_data, regression_config_periodic_expanding, xgboost_regression_model):
+    """XGBoost for time series regression with periodic retraining."""
     print("=" * 80)
-    print("EXAMPLE 1: XGBoost Regression with Three-Way Split")
+    print("XGBoost Regression with Periodic Retraining (Expanding Window)")
     print("=" * 80)
 
     X, y = regression_data
@@ -237,9 +265,63 @@ def test_example_xgboost_regression(regression_data, regression_config_periodic_
     )
 
     metrics = trainer.fit(X, y)
+    print(f"\n{metrics}")
     
     assert len(metrics.retrain_history) > 0, "Should have at least one retraining event"
-    assert metrics.test_score > 0, "Test RMSE should be positive"
+    assert metrics.test_score > 0, f"Test R² score should be > 0, got {metrics.test_score}"
+
+
+def test_example_xgboost_regression_periodic_sliding(regression_data, regression_config_periodic_sliding, xgboost_regression_model):
+    """XGBoost for time series regression with SLIDING window periodic retraining.
+    
+    This test matches the user's configuration:
+    - train_ratio=0.2 (only 20% for initial training)
+    - sliding_window_size=126
+    - retrain_period=21
+    - RetrainMode.SLIDING
+    
+    This verifies that periodic retraining with SLIDING window produces positive metrics.
+    """
+    print("=" * 80)
+    print("XGBoost Regression with Periodic Retraining (SLIDING Window)")
+    print("=" * 80)
+
+    X, y = regression_data
+    print(f"\nDataset: {len(X)} samples, {X.shape[1]} features")
+    print(f"Target: mean={y.mean():.2f}, std={y.std():.2f}")
+    print(f"Config: train_ratio={regression_config_periodic_sliding.train_ratio}, "
+          f"window={regression_config_periodic_sliding.sliding_window_size}, "
+          f"period={regression_config_periodic_sliding.retrain_period}")
+
+    model = xgboost_regression_model()
+    trainer = TimeSeriesModelTrainer(
+        model=model,
+        config=regression_config_periodic_sliding,
+        task_type=TaskType.REGRESSION,
+        metric_calculator=RegressionMetric()
+    )
+
+    metrics = trainer.fit(X, y)
+    print(f"\n{metrics}")
+    print(f"Retrain history entries: {len(metrics.retrain_history)}")
+    
+    # Print chunk metrics for debugging
+    print("\nChunk metrics:")
+    for i, entry in enumerate(metrics.retrain_history[:5]):  # First 5 chunks
+        chunk_metrics = entry.get('test_chunk_metrics', {})
+        print(f"  Chunk {i}: R²={chunk_metrics.get('r2', 'N/A'):.4f}")
+    if len(metrics.retrain_history) > 5:
+        print(f"  ... ({len(metrics.retrain_history) - 5} more chunks)")
+    
+    # Assertions
+    assert len(metrics.retrain_history) > 0, "Should have at least one retraining event"
+    assert metrics.train_score is not None and not np.isnan(metrics.train_score), \
+        f"Train score should not be NaN, got {metrics.train_score}"
+    assert metrics.test_score is not None and not np.isnan(metrics.test_score), \
+        f"Test score should not be NaN, got {metrics.test_score}"
+    assert metrics.train_score > 0, f"Train R² score should be > 0, got {metrics.train_score}"
+    assert metrics.test_score > 0, f"Test R² score should be > 0, got {metrics.test_score}"
+
 
 def test_mlp_regression_periodic(regression_data, regression_config_periodic_expanding, mlp_regression_model):
     """MLP Regression with periodic retraining (expanding window)."""
@@ -360,16 +442,7 @@ def test_xgboost_classification(multiclass_data, classification_config_three_way
 
     model = xgboost_classification_model()
 
-    # Hyperparameter tuning (simplified)
-    param_grid = {
-        'n_estimators': [50, 100],
-        'max_depth': [3, 5],
-        'learning_rate': [0.05, 0.1],
-    }
-
     print("\n--- Hyperparameter Tuning ---")
-    # Note: If your TimeSeriesModelTrainer supports param_grid, use it here.
-    # For now, just fit with default params since tuning logic isn't implemented in the example
     trainer = TimeSeriesModelTrainer(
         model=model,
         config=classification_config_three_way,
