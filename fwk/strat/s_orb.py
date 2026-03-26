@@ -45,6 +45,9 @@ def load_data(p_data_path: Optional[Path] = None, p_symbol: str = "QQQ") -> pd.D
     col_mapping = {col: col.replace(f"{p_symbol}_", "") for col in cols}
     df = df_bundle[cols].rename(columns=col_mapping).copy()
     
+    if "i_minute_i" in df_bundle.columns:
+        df["i_minute_i"] = df_bundle["i_minute_i"]
+    
     return df
 
 
