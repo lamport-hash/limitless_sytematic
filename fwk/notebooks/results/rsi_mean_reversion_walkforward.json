@@ -1,0 +1,19 @@
+{
+  "strategy": "rsi_mean_reversion",
+  "strategy_name": "RSI Mean Reversion",
+  "bundle_path": "/data/bundle/etf_x_ext_list_features_bundle.parquet",
+  "symbol": "QQQ",
+  "n_windows": 6,
+  "summary": {
+    "n_windows": 6,
+    "avg_oos_sharpe": -999.0,
+    "avg_oos_return": -999.0,
+    "avg_oos_max_dd": 100.0
+  },
+  "recommended_params": {
+    "p_rsi_period": "7",
+    "p_oversold": "25",
+    "atr_mult": 1.5,
+    "rr": 1.5
+  }
+}

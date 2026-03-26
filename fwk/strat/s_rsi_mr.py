@@ -6,8 +6,7 @@ Strategy that trades RSI overbought/oversold levels with EMA200 trend filter.
 - Short Signal: RSI > overbought (70) AND close < EMA200 (mean-reversion in downtrend)
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
@@ -22,43 +21,10 @@ from core.enums import (
     g_index_col,
 )
 
-DATA_PATH = Path("data/bundle/test_etf_features_bundle.parquet")
-ETF_SYMBOL = "QQQ"
-
 RSI_PERIOD = 14
 OVERSOLD = 30
 OVERBOUGHT = 70
 EMA200_PERIOD = 200
-
-
-def load_qqq_data(p_data_path: Optional[Path] = None) -> pd.DataFrame:
-    """
-    Load QQQ ETF data from bundle file.
-    
-    Args:
-        p_data_path: Path to bundle parquet file (default: DATA_PATH)
-        
-    Returns:
-        DataFrame with framework columns (S_open_f32, S_high_f32, etc.)
-    """
-    data_path = p_data_path or DATA_PATH
-    
-    if not data_path.exists():
-        raise FileNotFoundError(
-            f"Bundle not found: {data_path}\n"
-            f"Please ensure the bundle file exists."
-        )
-    
-    df_bundle = pd.read_parquet(data_path)
-    
-    qqq_cols = [c for c in df_bundle.columns if c.startswith(f"{ETF_SYMBOL}_")]
-    if not qqq_cols:
-        raise ValueError(f"No {ETF_SYMBOL} columns found in bundle")
-    
-    col_mapping = {col: col.replace(f"{ETF_SYMBOL}_", "") for col in qqq_cols}
-    df = df_bundle[qqq_cols].rename(columns=col_mapping).copy()
-    
-    return df
 
 
 def build_features(
@@ -229,6 +195,7 @@ def run_backtest(
 
 
 def main(
+    p_df: pd.DataFrame,
     p_direction: str = "both",
     p_rsi_period: int = RSI_PERIOD,
     p_oversold: int = OVERSOLD,
@@ -242,9 +209,10 @@ def main(
     p_verbose: bool = True,
 ) -> Tuple[pd.DataFrame, dict]:
     """
-    Main entry point: Load data, build features, run backtest.
+    Main entry point: Build features, run backtest.
     
     Args:
+        p_df: DataFrame with OHLCV data
         p_direction: "long", "short", or "both"
         p_rsi_period: RSI calculation period
         p_oversold: RSI oversold threshold
@@ -262,14 +230,10 @@ def main(
     """
     if p_verbose:
         print("=" * 80)
-        print("RSI Mean-Reversion Strategy - QQQ ETF")
+        print("RSI Mean-Reversion Strategy")
         print("=" * 80)
     
-    if p_verbose:
-        print(f"\n1. Loading QQQ data...")
-    df = load_qqq_data()
-    if p_verbose:
-        print(f"   Loaded {len(df)} bars")
+    df = p_df
     
     if p_verbose:
         print(f"\n2. Building features (direction={p_direction})...")

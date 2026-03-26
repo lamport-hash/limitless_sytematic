@@ -6,8 +6,7 @@ Detects volatility squeeze (narrow BB width) followed by breakout.
 - Short Signal: Price breaks below lower BB after squeeze
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
@@ -21,40 +20,6 @@ from core.enums import (
     g_volume_col,
     g_index_col,
 )
-
-DATA_PATH = Path("data/bundle/test_etf_features_bundle.parquet")
-ETF_SYMBOL = "QQQ"
-
-
-def load_qqq_data(p_data_path: Optional[Path] = None) -> pd.DataFrame:
-    """
-    Load QQQ ETF data from bundle file.
-    
-    Args:
-        p_data_path: Path to bundle parquet file (default: DATA_PATH)
-        
-    Returns:
-        DataFrame with framework columns (S_open_f32, S_high_f32, etc.)
-    """
-    data_path = p_data_path or DATA_PATH
-    
-    if not data_path.exists():
-        raise FileNotFoundError(
-            f"Bundle not found: {data_path}\n"
-            f"Please ensure the bundle file exists."
-        )
-    
-    df_bundle = pd.read_parquet(data_path)
-    
-    qqq_cols = [c for c in df_bundle.columns if c.startswith(f"{ETF_SYMBOL}_")]
-    if not qqq_cols:
-        raise ValueError(f"No {ETF_SYMBOL} columns found in bundle")
-    
-    col_mapping = {col: col.replace(f"{ETF_SYMBOL}_", "") for col in qqq_cols}
-    df = df_bundle[qqq_cols].rename(columns=col_mapping).copy()
-    
-    return df
-
 
 def build_features(
     p_df: pd.DataFrame,
@@ -224,6 +189,7 @@ def run_backtest(
 
 
 def main(
+    p_df: pd.DataFrame,
     p_direction: str = "both",
     p_bb_period: int = 20,
     p_bb_std: float = 2.0,
@@ -236,9 +202,10 @@ def main(
     p_verbose: bool = True,
 ) -> Tuple[pd.DataFrame, dict]:
     """
-    Main entry point: Load data, build features, run backtest.
+    Main entry point: Build features, run backtest.
     
     Args:
+        p_df: DataFrame with OHLCV data
         p_direction: "long", "short", or "both"
         p_bb_period: Bollinger Bands period
         p_bb_std: Standard deviation multiplier
@@ -255,14 +222,10 @@ def main(
     """
     if p_verbose:
         print("=" * 80)
-        print("Bollinger Bands Squeeze + Breakout Strategy - QQQ ETF")
+        print("Bollinger Bands Squeeze + Breakout Strategy")
         print("=" * 80)
     
-    if p_verbose:
-        print(f"\n1. Loading QQQ data...")
-    df = load_qqq_data()
-    if p_verbose:
-        print(f"   Loaded {len(df)} bars")
+    df = p_df
     
     if p_verbose:
         print(f"\n2. Building features (direction={p_direction})...")

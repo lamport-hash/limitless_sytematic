@@ -13,13 +13,11 @@ Variant features:
 - Exit at end of day
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 import pandas as pd
 import numpy as np
 from backtesting import Backtest, Strategy
 
-from norm.norm_utils import load_normalized_df
 from core.data_org import get_normalised_file, ProductType
 from core.enums import (
     MktDataTFreq,
@@ -38,49 +36,6 @@ from features.f_atr_breakout import (
 
 
 DEFAULT_SYMBOL = "EURUSD"
-DEFAULT_DATA_PATH = Path("data/normalised/candle_1min/firstrate_undefined/spot/EURUSD/EURUSD_20100103_20260226_candle_1min.df.parquet")
-
-
-def load_data(
-    p_symbol: str = DEFAULT_SYMBOL,
-    p_data_path: Optional[Path] = None,
-    p_start: Optional[str] = None,
-    p_end: Optional[str] = None,
-) -> pd.DataFrame:
-    """
-    Load 1-minute data from normalized files.
-    
-    Args:
-        p_symbol: Instrument symbol (default: EURUSD)
-        p_data_path: Direct path to data file (optional)
-        p_start: Start date YYYYMMDD (optional, for filtering)
-        p_end: End date YYYYMMDD (optional, for filtering)
-    
-    Returns:
-        DataFrame with framework columns
-    """
-    if p_data_path:
-        df = load_normalized_df(str(p_data_path))
-    else:
-        from pathlib import Path
-        data_dir = Path(__file__).parent.parent / "data" / "normalised" / "candle_1min" / "firstrate_undefined" / "spot" / p_symbol
-        files = list(data_dir.glob("*.df.parquet"))
-        if not files:
-            raise FileNotFoundError(f"No data files found in {data_dir}")
-        df = load_normalized_df(str(files[0]))
-    
-    if p_start or p_end:
-        base = pd.Timestamp("2000-01-01")
-        df["datetime"] = base + pd.to_timedelta(df[g_index_col], unit="m")
-        if p_start:
-            start_dt = pd.Timestamp(p_start)
-            df = df[df["datetime"] >= start_dt]
-        if p_end:
-            end_dt = pd.Timestamp(p_end) + pd.Timedelta(days=1)
-            df = df[df["datetime"] < end_dt]
-        df = df.drop(columns=["datetime"])
-    
-    return df
 
 
 def build_features(
@@ -258,8 +213,7 @@ def run_backtest(
 
 
 def main(
-    p_symbol: str = DEFAULT_SYMBOL,
-    p_data_path: Optional[Path] = None,
+    p_df: pd.DataFrame,
     p_atr_len: int = 14,
     p_atr_mult: float = 0.5,
     p_stop_mult: float = 0.3,
@@ -272,22 +226,16 @@ def main(
     p_cash: float = 100_000,
     p_commission: float = 0.00002,
     p_verbose: bool = True,
-    p_start: Optional[str] = None,
-    p_end: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, dict]:
     """
-    Main entry point: Load data, build features, run backtest.
+    Main entry point: Build features, run backtest.
     """
     if p_verbose:
         print("=" * 80)
         print("ATR Open Range Breakout Strategy")
         print("=" * 80)
     
-    if p_verbose:
-        print(f"\n1. Loading {p_symbol} 1-minute data...")
-    df = load_data(p_symbol, p_data_path, p_start, p_end)
-    if p_verbose:
-        print(f"   Loaded {len(df):,} bars")
+    df = p_df
     
     if p_verbose:
         print(f"\n2. Building features...")

@@ -9,8 +9,7 @@ The strategy uses stop-entry orders based on the first N candles of each day
 and exits after a configurable delay.
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 import pandas as pd
 import numpy as np
 from backtesting import Backtest, Strategy
@@ -25,41 +24,6 @@ from core.enums import (
     g_volume_col,
     g_index_col,
 )
-
-DATA_PATH = Path("data/bundle/test_etf_features_bundle.parquet")
-ETF_SYMBOL = "QQQ"
-
-
-def load_data(p_data_path: Optional[Path] = None, p_symbol: str = ETF_SYMBOL) -> pd.DataFrame:
-    """
-    Load ETF data from bundle file.
-    
-    Args:
-        p_data_path: Path to bundle parquet file (default: DATA_PATH)
-        p_symbol: ETF symbol to load (default: QQQ)
-        
-    Returns:
-        DataFrame with framework columns (S_open_f32, S_high_f32, etc.)
-    """
-    data_path = p_data_path or DATA_PATH
-    
-    if not data_path.exists():
-        raise FileNotFoundError(
-            f"Bundle not found: {data_path}\n"
-            f"Please ensure the bundle file exists."
-        )
-    
-    df_bundle = pd.read_parquet(data_path)
-    
-    symbol_cols = [c for c in df_bundle.columns if c.startswith(f"{p_symbol}_")]
-    if not symbol_cols:
-        raise ValueError(f"No {p_symbol} columns found in bundle")
-    
-    col_mapping = {col: col.replace(f"{p_symbol}_", "") for col in symbol_cols}
-    df = df_bundle[symbol_cols].rename(columns=col_mapping).copy()
-    
-    return df
-
 
 def build_features(
     p_df: pd.DataFrame,
@@ -204,6 +168,7 @@ def run_backtest(
 
 
 def main(
+    p_df: pd.DataFrame,
     p_test_candles: int = 8,
     p_exit_delay: int = 4,
     p_size: float = 0.1,
@@ -212,9 +177,10 @@ def main(
     p_verbose: bool = True,
 ) -> Tuple[pd.DataFrame, dict]:
     """
-    Main entry point: Load data, build features, run backtest.
+    Main entry point: Build features, run backtest.
     
     Args:
+        p_df: DataFrame with OHLCV data
         p_test_candles: Number of candles for stop price calculation
         p_exit_delay: Days to delay before exit
         p_size: Trade size
@@ -227,14 +193,10 @@ def main(
     """
     if p_verbose:
         print("=" * 80)
-        print("Daily Signal Strategy - QQQ ETF (Hourly Data)")
+        print("Daily Signal Strategy")
         print("=" * 80)
     
-    if p_verbose:
-        print(f"\n1. Loading QQQ data...")
-    df = load_data()
-    if p_verbose:
-        print(f"   Loaded {len(df)} bars")
+    df = p_df
     
     if p_verbose:
         print(f"\n2. Building features...")

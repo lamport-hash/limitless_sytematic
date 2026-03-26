@@ -6,8 +6,8 @@ Strategy that trades VWAP crossovers with volume confirmation.
 - Short: Price crosses below VWAP from above with volume
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
+
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
@@ -23,31 +23,6 @@ from core.enums import (
     g_volume_col,
     g_index_col,
 )
-
-DATA_PATH = Path("data/bundle/test_etf_features_bundle.parquet")
-ETF_SYMBOL = "QQQ"
-
-
-def load_data(p_data_path: Optional[Path] = None, p_symbol: str = "QQQ") -> pd.DataFrame:
-    """Load ETF data from bundle file."""
-    data_path = p_data_path or DATA_PATH
-    
-    if not data_path.exists():
-        raise FileNotFoundError(f"Bundle not found: {data_path}")
-    
-    df_bundle = pd.read_parquet(data_path)
-    
-    cols = [c for c in df_bundle.columns if c.startswith(f"{p_symbol}_")]
-    if not cols:
-        raise ValueError(f"No {p_symbol} columns found in bundle")
-    
-    col_mapping = {col: col.replace(f"{p_symbol}_", "") for col in cols}
-    df = df_bundle[cols].rename(columns=col_mapping).copy()
-    
-    if "i_minute_i" in df_bundle.columns:
-        df["i_minute_i"] = df_bundle["i_minute_i"]
-    
-    return df
 
 
 def build_features(
@@ -173,6 +148,7 @@ def run_backtest(
 
 
 def main(
+    p_df: pd.DataFrame,
     p_direction: str = "both",
     p_vol_filter: bool = True,
     p_atr_mult: float = 2.0,
@@ -187,7 +163,7 @@ def main(
         print(f"VWAP Reclaim Strategy - Direction: {p_direction}")
         print("=" * 80)
     
-    df = load_data()
+    df = p_df
     df = build_features(
         df,
         p_direction=p_direction,

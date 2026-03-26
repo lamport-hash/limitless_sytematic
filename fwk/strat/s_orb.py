@@ -6,9 +6,9 @@ Strategy that trades breakouts from the opening range.
 - Short: Price breaks below OR low with volume confirmation
 """
 
-from pathlib import Path
-from typing import Tuple, Optional
 import datetime
+from typing import Tuple
+
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
@@ -24,31 +24,6 @@ from core.enums import (
     g_volume_col,
     g_index_col,
 )
-
-DATA_PATH = Path("data/bundle/test_etf_features_bundle.parquet")
-ETF_SYMBOL = "QQQ"
-
-
-def load_data(p_data_path: Optional[Path] = None, p_symbol: str = "QQQ") -> pd.DataFrame:
-    """Load ETF data from bundle file."""
-    data_path = p_data_path or DATA_PATH
-    
-    if not data_path.exists():
-        raise FileNotFoundError(f"Bundle not found: {data_path}")
-    
-    df_bundle = pd.read_parquet(data_path)
-    
-    cols = [c for c in df_bundle.columns if c.startswith(f"{p_symbol}_")]
-    if not cols:
-        raise ValueError(f"No {p_symbol} columns found in bundle")
-    
-    col_mapping = {col: col.replace(f"{p_symbol}_", "") for col in cols}
-    df = df_bundle[cols].rename(columns=col_mapping).copy()
-    
-    if "i_minute_i" in df_bundle.columns:
-        df["i_minute_i"] = df_bundle["i_minute_i"]
-    
-    return df
 
 
 def build_features(
@@ -185,6 +160,7 @@ def run_backtest(
 
 
 def main(
+    p_df: pd.DataFrame,
     p_direction: str = "both",
     p_or_minutes: int = 15,
     p_vol_filter: bool = True,
@@ -200,11 +176,7 @@ def main(
         print(f"ORB Strategy - {p_or_minutes}min - Direction: {p_direction}")
         print("=" * 80)
     
-    if p_verbose:
-        print(f"\n1. Loading data...")
-    df = load_data()
-    if p_verbose:
-        print(f"   Loaded {len(df)} bars")
+    df = p_df
     
     if p_verbose:
         print(f"\n2. Building features...")
