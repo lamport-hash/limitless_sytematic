@@ -10,11 +10,11 @@ from typing import Tuple
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 from backtesting import Backtest, Strategy
 
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
+from features.feature_ta_utils import calculate_atr
 from core.enums import (
     g_open_col,
     g_high_col,
@@ -41,19 +41,15 @@ def build_features(
     bdf.add_feature(FeatureType.EMA, periods=[p_ema_period])
     df = bdf.get_dataframe()
     
-    df["ATR"] = ta.atr(
-        df[g_high_col],
-        df[g_low_col],
-        df[g_close_col],
-        length=14
-    )
+    df["ATR"] = calculate_atr(df, period=14)
     
-    df["ema200"] = df[g_close_col].ewm(span=p_ema_period, adjust=False).mean()
+    # Use BaseDataFrame's EMA instead of duplicating calculation
+    ema_col = f"F_ema_{p_ema_period}_{g_close_col}_f32"
     
     rsi_col = f"rsi{p_rsi_period}"
     
-    long_entry = (df[rsi_col] < p_oversold) & (df[g_close_col] > df["ema200"])
-    short_entry = (df[rsi_col] > p_overbought) & (df[g_close_col] < df["ema200"])
+    long_entry = (df[rsi_col] < p_oversold) & (df[g_close_col] > df[ema_col])
+    short_entry = (df[rsi_col] > p_overbought) & (df[g_close_col] < df[ema_col])
     
     df["signal"] = 0
     if p_direction in ("long", "both"):
@@ -161,7 +157,7 @@ def main(
     """Main entry point."""
     if p_verbose:
         print("=" * 80)
-        print(f"RSI Mean Reversion Strategy - Direction: {p_direction}")
+        print(f"RSI Mean Reversion Strategy - RSI{p_rsi_period} - EMA{p_ema_period} - Direction: {p_direction}")
         print("=" * 80)
     
     df = p_df

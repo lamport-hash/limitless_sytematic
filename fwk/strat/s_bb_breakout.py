@@ -9,7 +9,8 @@ Detects volatility squeeze (narrow BB width) followed by breakout.
 from typing import Tuple
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+# from features.feature_ta_utils import calculate_atr
+import pandas as pd
 from backtesting import Backtest, Strategy
 
 from core.enums import (

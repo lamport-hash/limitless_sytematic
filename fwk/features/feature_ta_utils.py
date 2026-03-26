@@ -249,6 +249,124 @@ def numba_roc_correct_min(prices, min_index, period):
 
 
 
+@jit(nopython=True)
+def numba_sma(prices, period):
+    """Simple Moving Average using Numba.
+    
+    Args:
+        prices (numpy.ndarray): Array of prices.
+        period (int): SMA period.
+    
+    Returns:
+        numpy.ndarray: SMA values.
+    """
+    n = len(prices)
+    sma = np.full(n, np.nan)
+    for i in range(period - 1, n):
+        sma[i] = np.mean(prices[i - period + 1:i + 1])
+    return sma
+
+
+@jit(nopython=True)
+def numba_rolling_max(values, period):
+    """Rolling maximum using Numba.
+    
+    Args:
+        values (numpy.ndarray): Array of values.
+        period (int): Rolling window period.
+    
+    Returns:
+        numpy.ndarray: Rolling maximum values.
+    """
+    n = len(values)
+    result = np.full(n, np.nan)
+    for i in range(period - 1, n):
+        result[i] = np.max(values[i - period + 1:i + 1])
+    return result
+
+
+@jit(nopython=True)
+def numba_rolling_min(values, period):
+    """Rolling minimum using Numba.
+    
+    Args:
+        values (numpy.ndarray): Array of values.
+        period (int): Rolling window period.
+    
+    Returns:
+        numpy.ndarray: Rolling minimum values.
+    """
+    n = len(values)
+    result = np.full(n, np.nan)
+    for i in range(period - 1, n):
+        result[i] = np.min(values[i - period + 1:i + 1])
+    return result
+
+
+@jit(nopython=True)
+def numba_macd(prices, fast_period=12, slow_period=26, signal_period=9):
+    """MACD indicator using Numba.
+    
+    Args:
+        prices (numpy.ndarray): Array of prices.
+        fast_period (int): Fast EMA period (default 12).
+        slow_period (int): Slow EMA period (default 26).
+        signal_period (int): Signal line EMA period (default 9).
+    
+    Returns:
+        tuple: (macd_line, signal_line, histogram)
+    """
+    ema_fast = numba_ema(prices, fast_period)
+    ema_slow = numba_ema(prices, slow_period)
+    macd_line = ema_fast - ema_slow
+    signal_line = numba_ema(macd_line, signal_period)
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
+@jit(nopython=True)
+def numba_crossover_detect(fast_line, slow_line):
+    """Detect crossovers between two lines.
+    
+    Args:
+        fast_line (numpy.ndarray): Fast line values.
+        slow_line (numpy.ndarray): Slow line values.
+    
+    Returns:
+        numpy.ndarray: 1 for bullish crossover, -1 for bearish, 0 otherwise.
+    """
+    n = len(fast_line)
+    signals = np.zeros(n)
+    for i in range(1, n):
+        if (not (np.isnan(fast_line[i]) or np.isnan(slow_line[i]) or 
+                    np.isnan(fast_line[i-1]) or np.isnan(slow_line[i-1]))):
+            # Bullish crossover
+            if fast_line[i-1] <= slow_line[i-1] and fast_line[i] > slow_line[i]:
+                signals[i] = 1
+            # Bearish crossover
+            elif fast_line[i-1] >= slow_line[i-1] and fast_line[i] < slow_line[i]:
+                signals[i] = -1
+    return signals
+
+
+def calculate_atr(df, period=14):
+    """Wrapper for numba_atr that works with DataFrame.
+    
+    Args:
+        df: DataFrame with S_high_f32, S_low_f32, S_close_f32 columns.
+        period: ATR period (default 14).
+    
+    Returns:
+        numpy.ndarray: ATR values.
+    """
+    return numba_atr(
+        df[g_high_col].to_numpy(),
+        df[g_low_col].to_numpy(),
+        df[g_close_col].to_numpy(),
+        period
+    )
+
+
 def add_accumulation_distribution_index(df):
     """
     Calculate Accumulation/Distribution Index for OHLCV data.

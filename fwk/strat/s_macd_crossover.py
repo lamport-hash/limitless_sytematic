@@ -10,10 +10,10 @@ from typing import Tuple
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 from backtesting import Backtest, Strategy
 
 from features.base_dataframe import BaseDataFrame
+from features.feature_ta_utils import numba_macd, numba_crossover_detect, calculate_atr
 from core.enums import (
     g_open_col,
     g_high_col,
@@ -34,23 +34,22 @@ def build_features(
     """Build MACD Crossover features and signals."""
     df = p_df.copy()
     
-    ema_fast = df[g_close_col].ewm(span=p_fast, adjust=False).mean()
-    ema_slow = df[g_close_col].ewm(span=p_slow, adjust=False).mean()
-    df["macd"] = ema_fast - ema_slow
-    df["macd_signal"] = df["macd"].ewm(span=p_signal, adjust=False).mean()
+    # Use numba-optimized MACD
+    prices = df[g_close_col].to_numpy()
+    macd_line, signal_line, histogram = numba_macd(prices, p_fast, p_slow, p_signal)
     
-    df["ATR"] = ta.atr(
-        df[g_high_col],
-        df[g_low_col],
-        df[g_close_col],
-        length=14
-    )
+    df["macd"] = macd_line
+    df["macd_signal"] = signal_line
+    df["macd_hist"] = histogram
     
-    prev_macd = df["macd"].shift(1)
-    prev_sig = df["macd_signal"].shift(1)
+    # Use numba-optimized ATR
+    df["ATR"] = calculate_atr(df, period=14)
     
-    long_entry = (df["macd"] > df["macd_signal"]) & (prev_macd <= prev_sig)
-    short_entry = (df["macd"] < df["macd_signal"]) & (prev_macd >= prev_sig)
+    # Use numba-optimized crossover detection
+    crossovers = numba_crossover_detect(df["macd"].to_numpy(), df["macd_signal"].to_numpy())
+    
+    long_entry = crossovers == 1
+    short_entry = crossovers == -1
     
     df["signal"] = 0
     if p_direction in ("long", "both"):
@@ -73,6 +72,9 @@ def convert_to_ohlcv(p_df: pd.DataFrame) -> pd.DataFrame:
     
     ohlcv_df["signal"] = p_df["signal"]
     ohlcv_df["ATR"] = p_df["ATR"]
+    ohlcv_df["macd"] = p_df["macd"]
+    ohlcv_df["macd_signal"] = p_df["macd_signal"]
+    ohlcv_df["macd_hist"] = p_df["macd_hist"]
     
     if g_index_col in p_df.columns:
         base = pd.Timestamp("2000-01-01")

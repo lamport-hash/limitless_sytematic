@@ -10,8 +10,9 @@ from typing import Tuple
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 from backtesting import Backtest, Strategy
+
+from features.feature_ta_utils import calculate_atr
 
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
@@ -39,12 +40,7 @@ def build_features(
     bdf.add_feature(FeatureType.BOLLINGER_BANDS, periods=[p_bb_period], std_multiplier=p_bb_std)
     df = bdf.get_dataframe()
     
-    df["ATR"] = ta.atr(
-        df[g_high_col],
-        df[g_low_col],
-        df[g_close_col],
-        length=14
-    )
+    df["ATR"] = calculate_atr(df, period=14)
     
     bb_width = df["bb_upper"] - df["bb_lower"]
     bb_width_low = bb_width.rolling(p_squeeze_lookback).min()

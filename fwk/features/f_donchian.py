@@ -13,6 +13,7 @@ import pandas as pd
 from typing import Optional
 
 from core.enums import g_high_col, g_low_col
+from features.feature_ta_utils import numba_rolling_max, numba_rolling_min
 
 
 def feature_donchian_channel(
@@ -20,7 +21,7 @@ def feature_donchian_channel(
     p_period: int = 20,
 ) -> pd.DataFrame:
     """
-    Calculate Donchian Channel.
+    Calculate Donchian Channel using numba-optimized functions.
 
     Creates columns:
     - dc_upper: Upper band (N-period high)
@@ -36,8 +37,8 @@ def feature_donchian_channel(
     """
     df = p_df.copy()
 
-    df["dc_upper"] = df[g_high_col].rolling(window=p_period).max()
-    df["dc_lower"] = df[g_low_col].rolling(window=p_period).min()
+    df["dc_upper"] = numba_rolling_max(df[g_high_col].to_numpy(), p_period)
+    df["dc_lower"] = numba_rolling_min(df[g_low_col].to_numpy(), p_period)
     df["dc_mid"] = (df["dc_upper"] + df["dc_lower"]) / 2
 
     return df

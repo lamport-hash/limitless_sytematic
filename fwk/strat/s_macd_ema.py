@@ -9,7 +9,8 @@ Implements a trend-following strategy combining:
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+# from features.feature_ta_utils import calculate_atr
+import pandas as pd
 from backtesting import Backtest, Strategy
 from typing import Optional
 

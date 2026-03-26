@@ -2,7 +2,7 @@
 Volume Ratio Module
 
 This module provides volume-based features including SMA and volume ratio.
-It calculates rolling volume average and compares current volume to the average.
+It calculates rolling volume average and compares current volume to average.
 
 Functions:
     - feature_volume_ratio: Calculate volume SMA and ratio
@@ -13,6 +13,7 @@ import pandas as pd
 from typing import Optional
 
 from core.enums import g_volume_col
+from features.feature_ta_utils import numba_sma
 
 
 def feature_volume_ratio(
@@ -20,7 +21,7 @@ def feature_volume_ratio(
     p_sma_period: int = 20,
 ) -> pd.DataFrame:
     """
-    Calculate volume SMA and volume ratio.
+    Calculate volume SMA and volume ratio using numba-optimized SMA.
 
     Creates columns:
     - vol_sma{N}: Rolling SMA of volume (N = period)
@@ -35,8 +36,10 @@ def feature_volume_ratio(
     """
     df = p_df.copy()
 
-    df[f"vol_sma{p_sma_period}"] = df[g_volume_col].rolling(window=p_sma_period).mean()
-
+    df[f"vol_sma{p_sma_period}"] = numba_sma(
+        df[g_volume_col].to_numpy(),
+        p_sma_period
+    )
     df["vol_ratio"] = df[g_volume_col] / df[f"vol_sma{p_sma_period}"]
     df["vol_ratio"] = df["vol_ratio"].replace([np.inf, -np.inf], np.nan)
 

@@ -9,7 +9,8 @@ Strategy that trades RSI overbought/oversold levels with EMA200 trend filter.
 from typing import Tuple
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+# from features.feature_ta_utils import calculate_atr
+import pandas as pd
 from backtesting import Backtest, Strategy
 
 from core.enums import (

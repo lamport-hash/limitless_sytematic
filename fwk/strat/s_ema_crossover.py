@@ -10,11 +10,11 @@ from typing import Tuple
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 from backtesting import Backtest, Strategy
 
 from features.base_dataframe import BaseDataFrame
 from features.features_utils import FeatureType
+from features.feature_ta_utils import numba_ema, numba_crossover_detect, calculate_atr
 from core.enums import (
     g_open_col,
     g_high_col,
@@ -33,22 +33,18 @@ def build_features(
 ) -> pd.DataFrame:
     """Build EMA Crossover features and signals."""
     df = p_df.copy()
+
+    prices = df[g_close_col].to_numpy()
     
-    df["ema_fast"] = df[g_close_col].ewm(span=p_fast_period, adjust=False).mean()
-    df["ema_slow"] = df[g_close_col].ewm(span=p_slow_period, adjust=False).mean()
+    df["ema_fast"] = numba_ema(prices, p_fast_period)
+    df["ema_slow"] = numba_ema(prices, p_slow_period)
     
-    df["ATR"] = ta.atr(
-        df[g_high_col],
-        df[g_low_col],
-        df[g_close_col],
-        length=14
-    )
+    df["ATR"] = calculate_atr(df, period=14)
     
-    prev_fast = df["ema_fast"].shift(1)
-    prev_slow = df["ema_slow"].shift(1)
+    crossovers = numba_crossover_detect(df["ema_fast"].to_numpy(), df["ema_slow"].to_numpy())
     
-    long_entry = (df["ema_fast"] > df["ema_slow"]) & (prev_fast <= prev_slow)
-    short_entry = (df["ema_fast"] < df["ema_slow"]) & (prev_fast >= prev_slow)
+    long_entry = crossovers == 1
+    short_entry = crossovers == -1
     
     df["signal"] = 0
     if p_direction in ("long", "both"):

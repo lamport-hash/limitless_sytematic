@@ -13,6 +13,7 @@ import pandas as pd
 from typing import Optional, Tuple
 
 from core.enums import g_close_col
+from features.feature_ta_utils import numba_sma, rolling_std
 
 
 def feature_bollinger_bands(
@@ -21,7 +22,7 @@ def feature_bollinger_bands(
     p_std_multiplier: float = 2.0,
 ) -> pd.DataFrame:
     """
-    Calculate Bollinger Bands.
+    Calculate Bollinger Bands using numba-optimized functions.
 
     Creates columns:
     - bb_mid: Middle band (N-period SMA)
@@ -39,8 +40,10 @@ def feature_bollinger_bands(
     """
     df = p_df.copy()
 
-    df["bb_mid"] = df[g_close_col].rolling(window=p_period).mean()
-    df["bb_std"] = df[g_close_col].rolling(window=p_period).std()
+    prices = df[g_close_col].to_numpy()
+
+    df["bb_mid"] = numba_sma(prices, p_period)
+    df["bb_std"] = rolling_std(prices, p_period)
     df["bb_upper"] = df["bb_mid"] + p_std_multiplier * df["bb_std"]
     df["bb_lower"] = df["bb_mid"] - p_std_multiplier * df["bb_std"]
 

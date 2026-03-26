@@ -1,0 +1,19 @@
+{
+  "strategy": "ema_crossover",
+  "strategy_name": "EMA Crossover",
+  "bundle_path": "/data/bundle/etf_x_ext_list_features_bundle.parquet",
+  "symbol": "QQQ",
+  "n_windows": 65,
+  "summary": {
+    "n_windows": 65,
+    "avg_oos_sharpe": -122.90912117166855,
+    "avg_oos_return": -122.95482518122746,
+    "avg_oos_max_dd": 12.254067711523437
+  },
+  "recommended_params": {
+    "p_fast_period": "9",
+    "p_slow_period": "21",
+    "atr_mult": 1.0,
+    "rr": 1.0
+  }
+}
