@@ -113,10 +113,10 @@ class ORBStrategy(Strategy):
             return
         
         close = float(self.data.Close[-1])
-        sig = int(self.data.signal.iloc[-1])
-        atr = float(self.data.ATR.iloc[-1])
-        or_low = float(self.data.or_low.iloc[-1])
-        or_high = float(self.data.or_high.iloc[-1])
+        sig = int(self.data.signal[-1])
+        atr = float(self.data.ATR[-1])
+        or_low = float(self.data.or_low[-1])
+        or_high = float(self.data.or_high[-1])
         
         if not np.isfinite(atr) or atr <= 0:
             return

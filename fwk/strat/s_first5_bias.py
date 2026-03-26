@@ -114,8 +114,8 @@ class First5BiasStrategy(Strategy):
             return
         
         close = float(self.data.Close[-1])
-        sig = int(self.data.signal.iloc[-1])
-        atr = float(self.data.ATR.iloc[-1])
+        sig = int(self.data.signal[-1])
+        atr = float(self.data.ATR[-1])
         
         if not np.isfinite(atr) or atr <= 0:
             return
